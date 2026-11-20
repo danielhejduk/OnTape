@@ -1,0 +1,13 @@
+[package]
+name = "ontape-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "ontape_core"
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+symphonia = "0.6.1"
