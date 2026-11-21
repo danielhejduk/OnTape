@@ -10,4 +10,4 @@ name = "ontape_core"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-symphonia = "0.6.1"
+symphonia = {version = "0.6.1", features = ["all"] }
