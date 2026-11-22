@@ -1,15 +1,24 @@
 mod cassette;
-mod recording;
+mod counter;
 mod layout;
+mod recording;
+mod reels;
 
 use std::fmt;
 use std::time::Duration;
 
 pub use cassette::Cassette;
+pub use counter::Counter;
+pub use layout::{LayoutError, LayoutOptions, TrackInfo, layout_album};
 pub use recording::{Recording, Segment, Source};
+pub use reels::{Reels, TAPE_SPEED, Wind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TrackId(pub u64);
+
+/// A tape's id in the store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TapeId(pub i64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Side {
@@ -48,12 +57,14 @@ pub enum TapeKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TapeError {
     WriteProtected,
+    Invalid(&'static str),
 }
 
 impl fmt::Display for TapeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TapeError::WriteProtected => f.write_str("tape is write-protected"),
+            TapeError::Invalid(why) => write!(f, "invalid tape data: {why}"),
         }
     }
 }
@@ -94,6 +105,25 @@ impl Tape {
             facing: Side::A,
         }
     }
+
+    /// Rebuilds a tape from saved parts, checking that they fit together.
+    pub fn from_parts(
+        kind: TapeKind,
+        cassette: Cassette,
+        sides: [Recording; 2],
+        head: Duration,
+        facing: Side,
+    ) -> Result<Tape, TapeError> {
+        let side_len = cassette.side_len();
+        if sides.iter().any(|r| r.len() != side_len) {
+            return Err(TapeError::Invalid("side length does not match the cassette"));
+        }
+        if head > side_len {
+            return Err(TapeError::Invalid("head is past the end of the tape"));
+        }
+        Ok(Tape { kind, cassette, sides, head, facing })
+    }
+
     pub fn kind(&self) -> TapeKind {
         self.kind
     }
@@ -104,6 +134,11 @@ impl Tape {
 
     pub fn side_len(&self) -> Duration {
         self.cassette.side_len()
+    }
+
+    /// Reel geometry and default wind speed of this tape.
+    pub fn reels(&self) -> Reels {
+        Reels::for_cassette(self.cassette)
     }
 
     pub fn is_write_protected(&self) -> bool {

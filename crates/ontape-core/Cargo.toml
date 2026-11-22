@@ -10,4 +10,7 @@ name = "ontape_core"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-symphonia = {version = "0.6.1", features = ["all"] }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+rodio = { version = "0.23", default-features = false, features = ["playback"] }
+symphonia = { version = "0.6.1", features = ["all"] }
+symphonia-adapter-libopus = "0.3"

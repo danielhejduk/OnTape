@@ -1,5 +1,5 @@
 use std::time::Duration;
-use super::TrackId;
+use super::{TapeError, TrackId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
@@ -71,6 +71,28 @@ impl Recording {
             at += recording.write(at, piece_len, source);
         }
         recording
+    }
+
+    /// Rebuilds a recording from back-to-back pieces that must cover `len` exactly.
+    pub fn try_from_pieces(
+        len: Duration,
+        pieces: impl IntoIterator<Item = (Duration, Source)>,
+    ) -> Result<Recording, TapeError> {
+        let mut segments = Vec::new();
+        let mut at = Duration::ZERO;
+        for (piece_len, source) in pieces {
+            if piece_len.is_zero() {
+                return Err(TapeError::Invalid("empty segment"));
+            }
+            segments.push(Segment { start: at, len: piece_len, source });
+            at += piece_len;
+        }
+        if at != len {
+            return Err(TapeError::Invalid("segments do not cover the side exactly"));
+        }
+        let mut recording = Recording { len, segments };
+        recording.normalize();
+        Ok(recording)
     }
 
     pub fn len(&self) -> Duration {
