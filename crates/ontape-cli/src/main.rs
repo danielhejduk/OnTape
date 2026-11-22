@@ -21,9 +21,9 @@ use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(version)]
 struct Options {
-    #[arg(long, value_name = "PATH",
-    default_value = "ontape.db")]
-    db: PathBuf,
+    /// Library database [default: $XDG_DATA_HOME/ontape/ontape.db, falling back to ~/.local/share/ontape/ontape.db]
+    #[arg(long, value_name = "PATH")]
+    db: Option<PathBuf>,
 
     #[arg(long, value_name = "N", default_value_t = 1.0, value_parser = parse_speed,
     allow_negative_numbers = true)]
@@ -132,6 +132,19 @@ fn main() -> ExitCode {
     }
 }
 
+/// Default database location per the XDG Base Directory spec: `$XDG_DATA_HOME/ontape/ontape.db`,
+/// or `$HOME/.local/share/ontape/ontape.db` when `XDG_DATA_HOME` is unset, empty, or relative.
+fn default_db_path() -> Result<PathBuf, Box<dyn Error>> {
+    let absolute = |var: &str| std::env::var_os(var).map(PathBuf::from).filter(|p| p.is_absolute());
+    let data_home = match absolute("XDG_DATA_HOME") {
+        Some(dir) => dir,
+        None => absolute("HOME")
+            .ok_or("cannot locate data directory: set XDG_DATA_HOME or HOME, or pass --db")?
+            .join(".local/share"),
+    };
+    Ok(data_home.join("ontape").join("ontape.db"))
+}
+
 enum Flow {
     Continue,
     Watch(Option<Duration>),
@@ -140,11 +153,18 @@ enum Flow {
 
 fn run(opts: Options) -> Result<(), Box<dyn Error>> {
     let clock: Arc<dyn Clock> = Arc::new(ScaledClock { origin: Instant::now(), speed: opts.speed });
-    let store = Store::open(&opts.db)?;
+    let db = match opts.db {
+        Some(path) => path,
+        None => default_db_path()?,
+    };
+    if let Some(dir) = db.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let store = Store::open(&db)?;
     let session = Arc::new(Mutex::new(DeckSession::open(store, 0, clock)?));
 
     let speed_note = if opts.speed == 1.0 { String::new() } else { format!(", clock ×{}", opts.speed) };
-    println!("OnTape deck ({}{speed_note}). Type 'help' for commands.", opts.db.display());
+    println!("OnTape deck ({}{speed_note}). Type 'help' for commands.", db.display());
     println!("{}", status_line(&lock(&session)));
 
     let running = Arc::new(AtomicBool::new(true));
