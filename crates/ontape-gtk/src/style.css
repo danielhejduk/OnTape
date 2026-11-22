@@ -1,0 +1,36 @@
+/* The mechanical tape counter: white digits on black wheels. */
+.counter {
+  background-color: #101012;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.counter-digit {
+  font-family: monospace;
+  font-size: 22pt;
+  font-weight: bold;
+  color: #f4f4f2;
+  background-image: linear-gradient(to bottom, #3a3a3e, #121214 48%, #0c0c0e 52%, #3a3a3e);
+  border-radius: 4px;
+  margin: 0 1px;
+  padding: 0 7px;
+  min-width: 18px;
+}
+
+.transport button {
+  min-width: 52px;
+  min-height: 42px;
+}
+
+/* A transport key that is held down, like a latched piano key. */
+.transport button.latched {
+  background-color: alpha(@accent_bg_color, 0.25);
+  color: @accent_color;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.track-line {
+  opacity: 0.75;
+}
+

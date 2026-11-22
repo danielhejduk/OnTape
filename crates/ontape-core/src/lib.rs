@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod clock;
 pub mod deck;
+pub mod library;
 pub mod player;
 pub mod session;
 pub mod store;

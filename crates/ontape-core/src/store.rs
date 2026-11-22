@@ -45,11 +45,17 @@ pub enum StoreError {
     Sqlite(rusqlite::Error),
     NotFound(TapeId),
     Corrupt(String),
+    /// The database's folder could not be created.
+    Io(PathBuf, std::io::Error),
+    /// Neither `XDG_DATA_HOME` nor `HOME` says where to keep the database.
+    NoDataDir,
 }
 
 impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            StoreError::Io(path, e) => write!(f, "{}: {e}", path.display()),
+            StoreError::NoDataDir => f.write_str("cannot locate data directory: set XDG_DATA_HOME or HOME"),
             StoreError::Sqlite(e) => write!(f, "database error: {e}"),
             StoreError::NotFound(id) => write!(f, "no tape#{}", id.0),
             StoreError::Corrupt(why) => write!(f, "corrupt data: {why}"),
@@ -90,11 +96,31 @@ pub struct TapeSummary {
     pub position: Duration,
 }
 
+/// Default database location per the XDG Base Directory spec: `$XDG_DATA_HOME/ontape/ontape.db`,
+/// or `$HOME/.local/share/ontape/ontape.db` when `XDG_DATA_HOME` is unset, empty, or relative.
+pub fn default_db_path() -> Result<PathBuf> {
+    let absolute = |var: &str| std::env::var_os(var).map(PathBuf::from).filter(|p| p.is_absolute());
+    let data_home = match absolute("XDG_DATA_HOME") {
+        Some(dir) => dir,
+        None => absolute("HOME").ok_or(StoreError::NoDataDir)?.join(".local/share"),
+    };
+    Ok(data_home.join("ontape").join("ontape.db"))
+}
+
 pub struct Store {
     conn: Connection,
 }
 
 impl Store {
+    /// Opens the database at `path`, creating its folder first if needed.
+    pub fn open_creating_dir(path: impl AsRef<Path>) -> Result<Store> {
+        let path = path.as_ref();
+        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir).map_err(|e| StoreError::Io(dir.to_owned(), e))?;
+        }
+        Store::open(path)
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Store> {
         let conn = Connection::open(path)?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;

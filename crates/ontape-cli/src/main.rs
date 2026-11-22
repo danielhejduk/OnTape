@@ -5,16 +5,15 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use ontape_core::clock::Clock;
 use ontape_core::deck::{DeckEvent, DeckState};
-use ontape_core::player::{self, Player};
+use ontape_core::library::{self, RecordedTape};
+use ontape_core::player::Player;
 use ontape_core::session::{DeckSession, SessionError};
-use ontape_core::store::Store;
-use ontape_core::tape::{
-    Cassette, Direction, LayoutOptions, Side, Source, Tape, TapeId, TapeKind, TrackId, TrackInfo, layout_album,
-};
+use ontape_core::store::{self, Store};
+use ontape_core::tape::{Cassette, Direction, Side, Source, Tape, TapeId, TapeKind};
 
 use clap::{Parser, Subcommand};
 
@@ -132,19 +131,6 @@ fn main() -> ExitCode {
     }
 }
 
-/// Default database location per the XDG Base Directory spec: `$XDG_DATA_HOME/ontape/ontape.db`,
-/// or `$HOME/.local/share/ontape/ontape.db` when `XDG_DATA_HOME` is unset, empty, or relative.
-fn default_db_path() -> Result<PathBuf, Box<dyn Error>> {
-    let absolute = |var: &str| std::env::var_os(var).map(PathBuf::from).filter(|p| p.is_absolute());
-    let data_home = match absolute("XDG_DATA_HOME") {
-        Some(dir) => dir,
-        None => absolute("HOME")
-            .ok_or("cannot locate data directory: set XDG_DATA_HOME or HOME, or pass --db")?
-            .join(".local/share"),
-    };
-    Ok(data_home.join("ontape").join("ontape.db"))
-}
-
 enum Flow {
     Continue,
     Watch(Option<Duration>),
@@ -155,12 +141,9 @@ fn run(opts: Options) -> Result<(), Box<dyn Error>> {
     let clock: Arc<dyn Clock> = Arc::new(ScaledClock { origin: Instant::now(), speed: opts.speed });
     let db = match opts.db {
         Some(path) => path,
-        None => default_db_path()?,
+        None => store::default_db_path().map_err(|e| format!("{e}, or pass --db"))?,
     };
-    if let Some(dir) = db.parent().filter(|d| !d.as_os_str().is_empty()) {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
-    let store = Store::open(&db)?;
+    let store = Store::open_creating_dir(&db)?;
     let session = Arc::new(Mutex::new(DeckSession::open(store, 0, clock)?));
 
     let speed_note = if opts.speed == 1.0 { String::new() } else { format!(", clock ×{}", opts.speed) };
@@ -319,84 +302,24 @@ fn watch(session: &Mutex<DeckSession>, limit: Option<Duration>) {
     println!();
 }
 
-fn new_track_ids(count: usize) -> Result<impl Iterator<Item = TrackId>, Box<dyn Error>> {
-    let base = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64 * 100;
-    Ok((0..count as u64).map(move |i| TrackId(base + i)))
-}
-
 fn add_album(s: &mut DeckSession, title: &str, lens: &[Duration]) -> Result<(), Box<dyn Error>> {
-    let tracks: Vec<TrackInfo> = new_track_ids(lens.len())?.zip(lens).map(|(id, &len)| TrackInfo { id, len }).collect();
-    record_album(s, title, &tracks)
+    print_recorded(&library::record_lengths(s.store_mut(), title, lens)?);
+    Ok(())
 }
-
-const AUDIO_EXTENSIONS: &[&str] =
-    &["mp3", "ogg", "oga", "opus", "flac", "wav", "m4a", "mp4", "aac", "aiff", "aif", "caf", "mka", "mkv", "webm"];
 
 fn import(s: &mut DeckSession, path: &Path, title: Option<String>) -> Result<(), Box<dyn Error>> {
-    let path = path.canonicalize().map_err(|e| format!("{}: {e}", path.display()))?;
-    let files = if path.is_dir() {
-        let mut files: Vec<PathBuf> = std::fs::read_dir(&path)?
-            .filter_map(|entry| entry.ok().map(|e| e.path()))
-            .filter(|p| p.is_file() && is_audio(p))
-            .collect();
-        files.sort_by_cached_key(|p| track_order(p));
-        files
-    } else {
-        vec![path.clone()]
-    };
-    if files.is_empty() {
-        return Err(format!("no playable audio in {} (looked for {})", path.display(), AUDIO_EXTENSIONS.join(", ")).into());
-    }
-
-    // Probe every file before writing anything, so a bad file doesn't leave half an album behind.
-    let mut probed = Vec::new();
-    for file in &files {
-        probed.push((file, player::probe_len(file)?));
-    }
-    let mut tracks = Vec::new();
-    for (id, (file, len)) in new_track_ids(files.len())?.zip(probed) {
-        let name = file.file_stem().unwrap_or_default().to_string_lossy();
-        s.store().add_track(id, &name, file)?;
-        tracks.push(TrackInfo { id, len });
-    }
-    let title = title.unwrap_or_else(|| {
-        let named = if path.is_dir() { &path } else { &files[0] };
-        named.file_stem().unwrap_or_default().to_string_lossy().into_owned()
-    });
-    record_album(s, &title, &tracks)
+    let album = library::scan(path, title)?;
+    print_recorded(&library::record(s.store_mut(), &album)?);
+    Ok(())
 }
 
-fn is_audio(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| AUDIO_EXTENSIONS.iter().any(|a| a.eq_ignore_ascii_case(e)))
-}
-
-/// Sorts "2. Foo" before "10. Bar": by leading track number, then by name.
-fn track_order(path: &Path) -> (u64, String) {
-    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-    let digits: String = name.chars().take_while(char::is_ascii_digit).collect();
-    (digits.parse().unwrap_or(u64::MAX), name)
-}
-
-fn record_album(s: &mut DeckSession, title: &str, tracks: &[TrackInfo]) -> Result<(), Box<dyn Error>> {
-    let tapes = layout_album(tracks, &LayoutOptions::default())?;
-    let count = tapes.len();
-    for (i, tape) in tapes.iter().enumerate() {
-        let name = if count == 1 { title.to_owned() } else { format!("{title} ({}/{count})", i + 1) };
-        let id = s.store_mut().add_tape(&name, tape)?;
-        let side_tracks = |side| {
-            tape.recording(side).segments().iter().filter(|seg| matches!(seg.source, Source::Track { .. })).count()
-        };
+fn print_recorded(tapes: &[RecordedTape]) {
+    for tape in tapes {
         println!(
-            "added #{} \"{name}\" on a {}: side A {} tracks, side B {} tracks",
-            id.0,
-            tape.cassette(),
-            side_tracks(Side::A),
-            side_tracks(Side::B)
+            "added #{} \"{}\" on a {}: side A {} tracks, side B {} tracks",
+            tape.id.0, tape.title, tape.cassette, tape.songs[0], tape.songs[1]
         );
     }
-    Ok(())
 }
 
 fn list_tapes(s: &DeckSession) -> Result<(), Box<dyn Error>> {
