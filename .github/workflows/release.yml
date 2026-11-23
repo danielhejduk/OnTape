@@ -80,7 +80,7 @@ jobs:
         run: |
           bin="target/${{ matrix.target }}/release/${{ matrix.package }}"
           file "$bin"
-          file "$bin" | grep -Eq 'static(-pie)? linked'
+          file "$bin" | grep -Eq 'static(-pie|ally) linked'
 
       - name: Package
         run: |
