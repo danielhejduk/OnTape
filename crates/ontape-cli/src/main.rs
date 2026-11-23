@@ -134,6 +134,7 @@ fn main() -> ExitCode {
 enum Flow {
     Continue,
     Watch(Option<Duration>),
+    Import(PathBuf, Option<String>),
     Quit,
 }
 
@@ -211,6 +212,11 @@ fn run(opts: Options) -> Result<(), Box<dyn Error>> {
         match flow {
             Ok(Flow::Continue) => {}
             Ok(Flow::Watch(limit)) => watch(&session, limit),
+            Ok(Flow::Import(path, title)) => {
+                if let Err(e) = import(&session, &path, title) {
+                    println!("error: {e}");
+                }
+            }
             Ok(Flow::Quit) => break,
             Err(e) => println!("error: {e}"),
         }
@@ -237,7 +243,7 @@ fn command(s: &mut DeckSession, command: Command) -> Result<Flow, Box<dyn Error>
 
         Command::Tapes => list_tapes(s)?,
         Command::Album { title, lengths } => add_album(s, &title, &lengths)?,
-        Command::Import { path, title } => import(s, &path, title)?,
+        Command::Import { path, title } => return Ok(Flow::Import(path, title)),
         Command::Blank { cassette, title } => {
             let title = title.unwrap_or_else(|| format!("Blank {cassette}"));
             let id = s.store_mut().add_tape(&title, &Tape::blank(cassette))?;
@@ -307,9 +313,9 @@ fn add_album(s: &mut DeckSession, title: &str, lens: &[Duration]) -> Result<(), 
     Ok(())
 }
 
-fn import(s: &mut DeckSession, path: &Path, title: Option<String>) -> Result<(), Box<dyn Error>> {
+fn import(session: &Mutex<DeckSession>, path: &Path, title: Option<String>) -> Result<(), Box<dyn Error>> {
     let album = library::scan(path, title)?;
-    print_recorded(&library::record(s.store_mut(), &album)?);
+    print_recorded(&library::record(lock(session).store_mut(), &album)?);
     Ok(())
 }
 

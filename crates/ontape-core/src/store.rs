@@ -173,6 +173,7 @@ impl Store {
         }
         tx.execute("DELETE FROM segments WHERE tape_id = ?1", params![id.0])?;
         insert_segments(&tx, id, tape)?;
+        delete_unused_tracks(&tx)?;
         tx.commit()?;
         Ok(())
     }
@@ -258,8 +259,12 @@ impl Store {
         Ok(tapes)
     }
     pub fn delete_tape(&self, id: TapeId) -> Result<()> {
-        let changed = self.conn.execute("DELETE FROM tapes WHERE id = ?1", params![id.0])?;
-        if changed == 0 { Err(StoreError::NotFound(id)) } else { Ok(()) }
+        let tx = self.conn.unchecked_transaction()?;
+        let changed = tx.execute("DELETE FROM tapes WHERE id = ?1", params![id.0])?;
+        if changed == 0 { return Err(StoreError::NotFound(id)); }
+        delete_unused_tracks(&tx)?;
+        tx.commit()?;
+        Ok(())
     }
 
     // Tracks
@@ -279,7 +284,7 @@ impl Store {
     pub fn add_track(&self, id: TrackId, title: &str, path: &Path) -> Result<()> {
         let path = path.to_str().ok_or_else(|| corrupt("track path is not valid UTF-8"))?;
         self.conn.execute(
-            "INSERT OR REPLACE INTO tracks (id, title, path) VALUES (?1, ?2, ?3)",
+            "INSERT INTO tracks (id, title, path) VALUES (?1, ?2, ?3)",
             params![track_to_sql(id)?, title, path],
         )?;
         Ok(())
@@ -336,6 +341,14 @@ impl Store {
         };
         Ok(Deck::restore(clock, tape, gear, value))
     }
+}
+
+fn delete_unused_tracks(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "DELETE FROM tracks WHERE id NOT IN (SELECT track_id FROM segments WHERE track_id IS NOT NULL)",
+        [],
+    )?;
+    Ok(())
 }
 
 fn insert_segments(conn: &Connection, id: TapeId, tape: &Tape) -> Result<()> {
