@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -36,16 +37,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             package: ontape-gtk
             static: false
-          - name: cli-aarch64-macos
-            os: macos-latest
-            target: aarch64-apple-darwin
-            package: ontape-cli
-            static: false
-          - name: cli-x86_64-windows
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            package: ontape-cli
-            static: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -64,6 +55,7 @@ jobs:
           target_lc="$(echo '${{ matrix.target }}' | tr '-' '_')"
           {
             echo "PKG_CONFIG_ALLOW_CROSS=1"
+            echo "PKG_CONFIG_ALL_STATIC=1"
             echo "PKG_CONFIG_PATH=$RUNNER_TEMP/alsa-static/lib/pkgconfig"
             echo "PKG_CONFIG_LIBDIR=$RUNNER_TEMP/alsa-static/lib/pkgconfig"
             echo "CC_${target_lc}=musl-gcc"
@@ -90,9 +82,7 @@ jobs:
           file "$bin"
           file "$bin" | grep -Eq 'static(-pie)? linked'
 
-      - name: Package (tar.gz)
-        if: runner.os != 'Windows'
-        shell: bash
+      - name: Package
         run: |
           dir="${{ matrix.package }}-${GITHUB_REF_NAME}-${{ matrix.target }}"
           mkdir "$dir"
@@ -100,23 +90,16 @@ jobs:
           tar -czf "$dir.tar.gz" "$dir"
           echo "ASSET=$dir.tar.gz" >> "$GITHUB_ENV"
 
-      - name: Package (zip)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $dir = "${{ matrix.package }}-$env:GITHUB_REF_NAME-${{ matrix.target }}"
-          New-Item -ItemType Directory $dir | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.package }}.exe", README.md $dir
-          Compress-Archive -Path $dir -DestinationPath "$dir.zip"
-          "ASSET=$dir.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: ${{ env.ASSET }}
           if-no-files-found: error
+
   release:
     name: Publish release
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
