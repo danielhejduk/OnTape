@@ -7,7 +7,7 @@ use ontape_core::deck::{DeckState, DeckStatus};
 use ontape_core::library::{self, RecordedTape, ScannedAlbum};
 use ontape_core::player::Player;
 use ontape_core::session::{self, DeckSession};
-use ontape_core::tape::{Cassette, Direction, Source, Tape, TapeId, TrackId};
+use ontape_core::tape::{Cassette, Direction, Recording, Side, Source, Tape, TapeId, TrackId};
 use relm4::adw::prelude::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::gtk::{gdk, gio, glib};
@@ -17,6 +17,8 @@ use crate::cassette::{self, CassetteView};
 use crate::cassette_widget::CassetteWidget;
 use crate::mpris::{self, MprisSlot, NowPlaying};
 use crate::shelf::{ShelfRow, ShelfRowMsg, ShelfRowOutput};
+use crate::tape_bar::TapeBar;
+use crate::tape_map::TapeMap;
 use crate::transport::{self, Toggle, WindAction, side_name};
 
 const TICK: Duration = Duration::from_millis(50);
@@ -64,6 +66,9 @@ pub struct App {
     playback_error: Option<String>,
     toasts: adw::ToastOverlay,
     cassette: CassetteWidget,
+    tape_bar: TapeBar,
+    /// What the tape bar was drawn from, so it is rebuilt only when that changes.
+    tape_bar_source: Option<(TapeId, [Recording; 2])>,
     split: adw::NavigationSplitView,
 }
 
@@ -146,13 +151,17 @@ impl Component for App {
         deck_header.set_title_widget(Some(&title));
 
         let cassette = CassetteWidget::new();
-        cassette.set_size_request(520, 330);
+        // The cassette scales to fit, so keep its floor small enough that the whole
+        // deck fits the window's 480 px minimum height (and 360 px width).
+        cassette.set_size_request(260, 165);
         cassette.set_hexpand(true);
         cassette.set_vexpand(true);
         let track = gtk::Label::builder()
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .build();
         track.add_css_class("track-line");
+        let tape_bar = TapeBar::new();
+        tape_bar.set_visible(false);
 
         let digits: [gtk::Label; 3] = std::array::from_fn(|_| {
             let digit = gtk::Label::new(Some("0"));
@@ -207,6 +216,7 @@ impl Component for App {
         let deck_box = gtk::Box::new(gtk::Orientation::Vertical, 14);
         deck_box.set_margin_all(24);
         deck_box.append(&cassette);
+        deck_box.append(&tape_bar);
         deck_box.append(&track);
         deck_box.append(&counter_row);
         deck_box.append(&transport_row);
@@ -284,6 +294,8 @@ impl Component for App {
             playback_error,
             toasts,
             cassette,
+            tape_bar,
+            tape_bar_source: None,
             split,
         };
         model.refresh();
@@ -524,6 +536,21 @@ impl App {
                 .unwrap_or_default();
         }
 
+        let bar_source = session
+            .deck()
+            .tape()
+            .map(|(id, tape)| (id, [Side::A, Side::B].map(|s| tape.recording(s).clone())));
+        if bar_source != self.tape_bar_source {
+            let map = session.deck().tape().map(|(_, tape)| {
+                TapeMap::new(tape, |track| {
+                    session.store().track_title(track).ok().flatten()
+                })
+            });
+            self.tape_bar.set_visible(map.is_some());
+            self.tape_bar.set_map(map);
+            self.tape_bar_source = bar_source;
+        }
+
         self.track_line = match self.status.tape.as_ref().map(|t| (t, t.source)) {
             None => String::new(),
             Some((_, None)) => "End of the side".to_owned(),
@@ -588,8 +615,12 @@ impl App {
                 .as_ref()
                 .map(|t| CassetteView::new(self.label.borrow().clone(), t));
             self.cassette.set_view(view);
+            if let Some(tape) = &self.status.tape {
+                self.tape_bar.set_head(tape.facing, tape.position);
+            }
         } else if self.reel_tick.is_none() {
             let (session, label) = (self.session.clone(), self.label.clone());
+            let tape_bar = self.tape_bar.clone();
             let drawn = Cell::new(None);
             self.reel_tick = Some(self.cassette.add_tick_callback(move |cassette, clock| {
                 let now = clock.frame_time();
@@ -597,7 +628,12 @@ impl App {
                     && let Ok(session) = session.try_borrow()
                 {
                     drawn.set(Some(now));
-                    cassette.set_view(cassette_view(&session, &label.borrow()));
+                    let view = cassette_view(&session, &label.borrow());
+                    if let Some(tape) = session.deck().tape().map(|(_, t)| t) {
+                        let position = session.deck().position().unwrap_or_default();
+                        tape_bar.set_head(tape.facing(), position);
+                    }
+                    cassette.set_view(view);
                 }
                 glib::ControlFlow::Continue
             }));

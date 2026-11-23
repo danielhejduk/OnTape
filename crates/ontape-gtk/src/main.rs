@@ -3,6 +3,8 @@ mod cassette;
 mod cassette_widget;
 mod mpris;
 mod shelf;
+mod tape_bar;
+mod tape_map;
 mod transport;
 
 use app::App;

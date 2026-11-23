@@ -27,6 +27,7 @@
 .transport button.latched {
   background-color: alpha(@accent_bg_color, 0.25);
   color: @accent_color;
+  color: var(--accent-color);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
@@ -34,3 +35,9 @@
   opacity: 0.75;
 }
 
+
+/* The tape bar draws everything in its own colour. */
+.tape-bar {
+  color: @accent_color;
+  color: var(--accent-color);
+}
