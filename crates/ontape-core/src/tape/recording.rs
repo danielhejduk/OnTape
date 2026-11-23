@@ -1,5 +1,5 @@
-use std::time::Duration;
 use super::{TapeError, TrackId};
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Source {
@@ -11,20 +11,26 @@ impl Source {
     pub fn advanced(self, by: Duration) -> Source {
         match self {
             Source::Silence => Source::Silence,
-            Source::Track { track, offset } => Source::Track { track, offset: offset + by },
+            Source::Track { track, offset } => Source::Track {
+                track,
+                offset: offset + by,
+            },
         }
     }
 
     fn continues_with(self, len: Duration, next: Source) -> bool {
         match (self, next) {
             (Source::Silence, Source::Silence) => true,
-            (Source::Track {
-                track: a,
-                offset: o
-            },
-            Source::Track { track: b, offset: p }) => {
-                a == b && o + len == p
-            }
+            (
+                Source::Track {
+                    track: a,
+                    offset: o,
+                },
+                Source::Track {
+                    track: b,
+                    offset: p,
+                },
+            ) => a == b && o + len == p,
             _ => false,
         }
     }
@@ -54,14 +60,19 @@ impl Recording {
         let segments = if len.is_zero() {
             Vec::new()
         } else {
-            vec![Segment { start: Duration::ZERO, len, source: Source::Silence }]
+            vec![Segment {
+                start: Duration::ZERO,
+                len,
+                source: Source::Silence,
+            }]
         };
-        Recording {
-            len, segments
-        }
+        Recording { len, segments }
     }
 
-    pub fn from_pieces(len: Duration, pieces: impl IntoIterator<Item = (Duration, Source)>) -> Recording {
+    pub fn from_pieces(
+        len: Duration,
+        pieces: impl IntoIterator<Item = (Duration, Source)>,
+    ) -> Recording {
         let mut recording = Recording::blank(len);
         let mut at = Duration::ZERO;
         for (piece_len, source) in pieces {
@@ -84,7 +95,11 @@ impl Recording {
             if piece_len.is_zero() {
                 return Err(TapeError::Invalid("empty segment"));
             }
-            segments.push(Segment { start: at, len: piece_len, source });
+            segments.push(Segment {
+                start: at,
+                len: piece_len,
+                source,
+            });
             at += piece_len;
         }
         if at != len {
@@ -123,7 +138,8 @@ impl Recording {
     }
 
     pub fn source_at(&self, pos: Duration) -> Option<Source> {
-        self.segment_at(pos).map(|s| s.source.advanced(pos - s.start))
+        self.segment_at(pos)
+            .map(|s| s.source.advanced(pos - s.start))
     }
 
     pub fn write(&mut self, at: Duration, len: Duration, source: Source) -> Duration {
@@ -134,7 +150,14 @@ impl Recording {
         let first = self.split_at(at);
         let past = self.split_at(end);
 
-        self.segments.splice(first..past, [Segment { start: at, len: end - at, source }]);
+        self.segments.splice(
+            first..past,
+            [Segment {
+                start: at,
+                len: end - at,
+                source,
+            }],
+        );
 
         self.normalize();
         end - at
@@ -159,7 +182,7 @@ impl Recording {
             Segment {
                 start: pos,
                 len: seg.len - head_len,
-                source: seg.source.advanced(head_len)
+                source: seg.source.advanced(head_len),
             },
         );
         i + 1
@@ -168,7 +191,9 @@ impl Recording {
     fn normalize(&mut self) {
         let mut merged: Vec<Segment> = Vec::with_capacity(self.segments.len());
         for seg in self.segments.drain(..) {
-            if let Some(last) = merged.last_mut() && last.source.continues_with(last.len, seg.source) {
+            if let Some(last) = merged.last_mut()
+                && last.source.continues_with(last.len, seg.source)
+            {
                 last.len += seg.len;
             } else {
                 merged.push(seg);

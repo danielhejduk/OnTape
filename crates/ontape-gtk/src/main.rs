@@ -12,9 +12,12 @@ use std::path::PathBuf;
 use std::error::Error;
 use std::sync::Arc;
 
-use ontape_core::{clock::SystemClock, session::DeckSession, store::{self, Store}};
+use ontape_core::{
+    clock::SystemClock,
+    session::DeckSession,
+    store::{self, Store},
+};
 use relm4::{RelmApp, gtk::glib::ExitCode};
-
 
 pub const APP_ID: &str = "tech.hejduk.OnTape";
 

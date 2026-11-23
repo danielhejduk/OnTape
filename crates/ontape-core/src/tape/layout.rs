@@ -17,21 +17,29 @@ pub struct LayoutOptions {
 
 impl Default for LayoutOptions {
     fn default() -> Self {
-        LayoutOptions { leader: Duration::from_secs(4), gap: Duration::from_secs(3) }
+        LayoutOptions {
+            leader: Duration::from_secs(4),
+            gap: Duration::from_secs(3),
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayoutError {
     NoTracks,
-    TrackTooLong { track: TrackId, len: Duration, max: Duration },
+    TrackTooLong {
+        track: TrackId,
+        len: Duration,
+        max: Duration,
+    },
 }
 
 impl fmt::Display for LayoutError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LayoutError::NoTracks => f.write_str("album has no tracks"),
-            LayoutError::TrackTooLong { track, len, max } => write!(f,
+            LayoutError::TrackTooLong { track, len, max } => write!(
+                f,
                 "track {} is {} s long; a side holds at most {} s",
                 track.0,
                 len.as_secs(),
@@ -52,18 +60,29 @@ pub fn layout_album(tracks: &[TrackInfo], opts: &LayoutOptions) -> Result<Vec<Ta
 
     for (i, t) in tracks.iter().enumerate() {
         if sides.len(i, i + 1) > capacity {
-            return Err(LayoutError::TrackTooLong { track: t.id, len: t.len, max: capacity.saturating_sub(opts.leader), })
+            return Err(LayoutError::TrackTooLong {
+                track: t.id,
+                len: t.len,
+                max: capacity.saturating_sub(opts.leader),
+            });
         }
     }
     let tape_count = sides.min_sides(capacity).div_ceil(2);
     let bounds = sides.balanced_split(tape_count * 2, capacity);
 
-    let tapes = bounds.chunks_exact(2).map(|pair| {
-        let (a, b) = (pair[0].clone(), pair[1].clone());
-        let longer = sides.len(a.start, a.end).max(sides.len(b.start, b.end));
-        let cassette = Cassette::smallest_fitting(longer).expect("sides are within capacity");
-        Tape::album(cassette, side_recording(&tracks[a], cassette, opts), side_recording(&tracks[b], cassette, opts))
-    }).collect();
+    let tapes = bounds
+        .chunks_exact(2)
+        .map(|pair| {
+            let (a, b) = (pair[0].clone(), pair[1].clone());
+            let longer = sides.len(a.start, a.end).max(sides.len(b.start, b.end));
+            let cassette = Cassette::smallest_fitting(longer).expect("sides are within capacity");
+            Tape::album(
+                cassette,
+                side_recording(&tracks[a], cassette, opts),
+                side_recording(&tracks[b], cassette, opts),
+            )
+        })
+        .collect();
     Ok(tapes)
 }
 
@@ -77,7 +96,13 @@ fn side_recording(tracks: &[TrackInfo], cassette: Cassette, opts: &LayoutOptions
         if i > 0 {
             pieces.push((opts.gap, Source::Silence));
         }
-        pieces.push((t.len, Source::Track { track: t.id, offset: Duration::ZERO }));
+        pieces.push((
+            t.len,
+            Source::Track {
+                track: t.id,
+                offset: Duration::ZERO,
+            },
+        ));
     }
     Recording::from_pieces(len, pieces)
 }
@@ -96,7 +121,10 @@ impl SideLengths {
             total += t.len;
             prefix.push(total);
         }
-        SideLengths { prefix, opts: *opts }
+        SideLengths {
+            prefix,
+            opts: *opts,
+        }
     }
 
     fn track_count(&self) -> usize {
@@ -139,7 +167,9 @@ impl SideLengths {
         for p in 1..=parts {
             for j in 0..=n {
                 for i in 0..=j {
-                    let Some(before) = best[p - 1][i] else { continue };
+                    let Some(before) = best[p - 1][i] else {
+                        continue;
+                    };
                     let side = self.len(i, j);
                     if side > capacity {
                         continue;
@@ -154,7 +184,10 @@ impl SideLengths {
                 }
             }
         }
-        assert!(best[parts][n].is_some(), "{parts} sides cannot hold the album");
+        assert!(
+            best[parts][n].is_some(),
+            "{parts} sides cannot hold the album"
+        );
 
         let mut bounds = Vec::with_capacity(parts);
         let mut end = n;

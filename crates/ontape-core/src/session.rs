@@ -59,7 +59,13 @@ impl DeckSession {
     pub fn open(store: Store, slot: u8, clock: Arc<dyn Clock>) -> Result<DeckSession> {
         let deck = store.load_deck(slot, clock.clone())?;
         let last_save = clock.now();
-        Ok(DeckSession { clock, store, slot, deck, last_save })
+        Ok(DeckSession {
+            clock,
+            store,
+            slot,
+            deck,
+            last_save,
+        })
     }
 
     pub fn deck(&self) -> &Deck {
@@ -154,7 +160,9 @@ mod tests {
     fn session() -> (Arc<ManualClock>, DeckSession, TapeId) {
         let clock = Arc::new(ManualClock::new());
         let mut store = Store::open_in_memory().unwrap();
-        let id = store.add_tape("Blank", &Tape::blank(Cassette::C60)).unwrap();
+        let id = store
+            .add_tape("Blank", &Tape::blank(Cassette::C60))
+            .unwrap();
         let session = DeckSession::open(store, 0, clock.clone()).unwrap();
         (clock, session, id)
     }
@@ -177,13 +185,19 @@ mod tests {
     fn insert_twice_is_occupied() {
         let (_, mut s, id) = session();
         s.insert(id).unwrap();
-        assert!(matches!(s.insert(id), Err(SessionError::Deck(DeckError::Occupied))));
+        assert!(matches!(
+            s.insert(id),
+            Err(SessionError::Deck(DeckError::Occupied))
+        ));
     }
 
     #[test]
     fn missing_tape_is_a_store_error() {
         let (_, mut s, _) = session();
-        assert!(matches!(s.insert(TapeId(99)), Err(SessionError::Store(StoreError::NotFound(_)))));
+        assert!(matches!(
+            s.insert(TapeId(99)),
+            Err(SessionError::Store(StoreError::NotFound(_)))
+        ));
     }
 
     #[test]
@@ -193,7 +207,10 @@ mod tests {
         s.play().unwrap();
         clock.advance(Duration::from_secs(30));
         assert_eq!(s.eject().unwrap(), id);
-        assert_eq!(s.store().load_tape(id).unwrap().position(), Duration::from_secs(30));
+        assert_eq!(
+            s.store().load_tape(id).unwrap().position(),
+            Duration::from_secs(30)
+        );
         assert!(reopen(s, &clock).deck().is_empty());
     }
 
@@ -218,7 +235,10 @@ mod tests {
         s.insert(id).unwrap();
         s.wind(Direction::Forward).unwrap();
         clock.advance(Duration::from_secs(61));
-        assert_eq!(s.tick().unwrap(), vec![DeckEvent::WindFinished(Direction::Forward)]);
+        assert_eq!(
+            s.tick().unwrap(),
+            vec![DeckEvent::WindFinished(Direction::Forward)]
+        );
         let s = reopen(s, &clock);
         assert_eq!(s.deck().position(), Some(Cassette::C60.side_len()));
     }

@@ -91,7 +91,12 @@ impl Player {
         sink.log_on_drop(false);
         let player = rodio::Player::connect_new(sink.mixer());
         player.set_speed(rate as f32);
-        Ok(Player { _sink: sink, player, rate, current: None })
+        Ok(Player {
+            _sink: sink,
+            player,
+            rate,
+            current: None,
+        })
     }
 
     /// Brings the audio in line with the deck. Call it often (every ~100 ms).
@@ -110,14 +115,19 @@ impl Player {
             }
             let pos = self.player.get_pos();
             let drift = pos.abs_diff(offset);
-            if drift <= MAX_DRIFT.mul_f64(self.rate.max(1.0)) || self.player.try_seek(offset).is_ok() {
+            if drift <= MAX_DRIFT.mul_f64(self.rate.max(1.0))
+                || self.player.try_seek(offset).is_ok()
+            {
                 return Ok(());
             }
         }
 
         self.player.clear();
         self.current = Some(track);
-        let path = session.store().track_path(track)?.ok_or(PlaybackError::NoFile(track))?;
+        let path = session
+            .store()
+            .track_path(track)?
+            .ok_or(PlaybackError::NoFile(track))?;
         self.player.append(FileSource::open(&path)?);
         if !offset.is_zero() {
             // Not every format can seek; then the song just plays from the top.
@@ -139,8 +149,13 @@ mod tests {
 
     fn deck() -> (Arc<ManualClock>, Deck) {
         let clock = Arc::new(ManualClock::new());
-        let tracks = [TrackInfo { id: TrackId(1), len: Duration::from_secs(60) }];
-        let tape = layout_album(&tracks, &LayoutOptions::default()).unwrap().remove(0);
+        let tracks = [TrackInfo {
+            id: TrackId(1),
+            len: Duration::from_secs(60),
+        }];
+        let tape = layout_album(&tracks, &LayoutOptions::default())
+            .unwrap()
+            .remove(0);
         let mut deck = Deck::new(clock.clone());
         deck.insert(TapeId(1), tape).unwrap();
         (clock, deck)

@@ -97,7 +97,11 @@ impl Component for App {
             .build()
     }
 
-    fn init(session: DeckSession, root: adw::ApplicationWindow, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(
+        session: DeckSession,
+        root: adw::ApplicationWindow,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
         let session = Rc::new(RefCell::new(session));
         let label = Rc::new(RefCell::new(String::new()));
         let (player, playback_error) = match Player::open(1.0) {
@@ -106,13 +110,12 @@ impl Component for App {
         };
 
         // Shelf
-        let shelf: FactoryVecDeque<ShelfRow> = FactoryVecDeque::builder().launch(gtk::ListBox::default()).forward(
-            sender.input_sender(),
-            |output| match output {
+        let shelf: FactoryVecDeque<ShelfRow> = FactoryVecDeque::builder()
+            .launch(gtk::ListBox::default())
+            .forward(sender.input_sender(), |output| match output {
                 ShelfRowOutput::Insert(id) => AppMsg::Insert(id),
                 ShelfRowOutput::AskDelete(id, title) => AppMsg::AskDelete(id, title),
-            },
-        );
+            });
         let list = shelf.widget();
         list.add_css_class("navigation-sidebar");
         let placeholder = adw::StatusPage::builder()
@@ -122,13 +125,20 @@ impl Component for App {
             .build();
         placeholder.add_css_class("compact");
         list.set_placeholder(Some(&placeholder));
-        let scrolled = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).child(list).build();
+        let scrolled = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vexpand(true)
+            .child(list)
+            .build();
         let side_header = adw::HeaderBar::new();
         side_header.pack_start(&add_menu(&sender));
         let side_view = adw::ToolbarView::new();
         side_view.add_top_bar(&side_header);
         side_view.set_content(Some(&scrolled));
-        let sidebar = adw::NavigationPage::builder().title("Shelf").child(&side_view).build();
+        let sidebar = adw::NavigationPage::builder()
+            .title("Shelf")
+            .child(&side_view)
+            .build();
 
         // Deck
         let title = adw::WindowTitle::new("OnTape", "");
@@ -139,7 +149,9 @@ impl Component for App {
         cassette.set_size_request(520, 330);
         cassette.set_hexpand(true);
         cassette.set_vexpand(true);
-        let track = gtk::Label::builder().ellipsize(gtk::pango::EllipsizeMode::End).build();
+        let track = gtk::Label::builder()
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .build();
         track.add_css_class("track-line");
 
         let digits: [gtk::Label; 3] = std::array::from_fn(|_| {
@@ -161,10 +173,20 @@ impl Component for App {
         counter_row.append(&counter);
         counter_row.append(&reset);
 
-        let rew = wind_button("media-seek-backward-symbolic", "Rewind (←); hold while playing to review", Direction::Backward, &sender);
+        let rew = wind_button(
+            "media-seek-backward-symbolic",
+            "Rewind (←); hold while playing to review",
+            Direction::Backward,
+            &sender,
+        );
         let play = icon_button("media-playback-start-symbolic", "Play (Space)");
         let stop = icon_button("media-playback-stop-symbolic", "Stop (Space)");
-        let ff = wind_button("media-seek-forward-symbolic", "Fast-forward (→); hold while playing to cue", Direction::Forward, &sender);
+        let ff = wind_button(
+            "media-seek-forward-symbolic",
+            "Fast-forward (→); hold while playing to cue",
+            Direction::Forward,
+            &sender,
+        );
         let flip = icon_button("object-flip-horizontal-symbolic", "Turn the tape over (F)");
         let eject = icon_button("media-eject-symbolic", "Eject (E)");
         let keys = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -192,7 +214,10 @@ impl Component for App {
         let deck_view = adw::ToolbarView::new();
         deck_view.add_top_bar(&deck_header);
         deck_view.set_content(Some(&deck_box));
-        let content = adw::NavigationPage::builder().title("Deck").child(&deck_view).build();
+        let content = adw::NavigationPage::builder()
+            .title("Deck")
+            .child(&deck_view)
+            .build();
 
         let split = adw::NavigationSplitView::new();
         split.set_sidebar(Some(&sidebar));
@@ -205,7 +230,8 @@ impl Component for App {
         root.set_content(Some(&toasts));
 
         let narrow = adw::Breakpoint::new(
-            adw::BreakpointCondition::parse("max-width: 640sp").expect("valid breakpoint condition"),
+            adw::BreakpointCondition::parse("max-width: 640sp")
+                .expect("valid breakpoint condition"),
         );
         narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
         root.add_breakpoint(narrow);
@@ -231,7 +257,11 @@ impl Component for App {
         {
             let input = sender.input_sender().clone();
             glib::timeout_add_local(TICK, move || {
-                if input.send(AppMsg::Tick).is_ok() { glib::ControlFlow::Continue } else { glib::ControlFlow::Break }
+                if input.send(AppMsg::Tick).is_ok() {
+                    glib::ControlFlow::Continue
+                } else {
+                    glib::ControlFlow::Break
+                }
             });
         }
         let mpris = MprisSlot::default();
@@ -262,12 +292,27 @@ impl Component for App {
             model.toast(error);
         }
 
-        let mut widgets = AppWidgets { title, digits, track, rew, play, stop, ff, flip, eject };
+        let mut widgets = AppWidgets {
+            title,
+            digits,
+            track,
+            rew,
+            play,
+            stop,
+            ff,
+            flip,
+            eject,
+        };
         model.update_view(&mut widgets, sender);
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: AppMsg, sender: ComponentSender<Self>, root: &adw::ApplicationWindow) {
+    fn update(
+        &mut self,
+        msg: AppMsg,
+        sender: ComponentSender<Self>,
+        root: &adw::ApplicationWindow,
+    ) {
         match msg {
             AppMsg::Tick => self.tick(),
             AppMsg::Play => self.act(DeckSession::play),
@@ -308,7 +353,11 @@ impl Component for App {
             }
             AppMsg::NewBlank(cassette) => {
                 let title = format!("Blank {cassette}");
-                let added = self.session.borrow_mut().store_mut().add_tape(&title, &Tape::blank(cassette));
+                let added = self
+                    .session
+                    .borrow_mut()
+                    .store_mut()
+                    .add_tape(&title, &Tape::blank(cassette));
                 match added {
                     Ok(_) => self.toast(&format!("Added a blank {cassette}")),
                     Err(e) => self.toast(&e.to_string()),
@@ -319,7 +368,12 @@ impl Component for App {
         self.refresh();
     }
 
-    fn update_cmd(&mut self, cmd: AppCmd, _sender: ComponentSender<Self>, _root: &adw::ApplicationWindow) {
+    fn update_cmd(
+        &mut self,
+        cmd: AppCmd,
+        _sender: ComponentSender<Self>,
+        _root: &adw::ApplicationWindow,
+    ) {
         match cmd {
             AppCmd::Scanned(Ok(album)) => {
                 let recorded = library::record(self.session.borrow_mut().store_mut(), &album);
@@ -342,7 +396,11 @@ impl Component for App {
         match (&self.status.tape, &self.tape_title) {
             (Some(tape), Some((_, title))) => {
                 widgets.title.set_title(title);
-                widgets.title.set_subtitle(&format!("Side {} · {}", side_name(tape.facing), tape.cassette));
+                widgets.title.set_subtitle(&format!(
+                    "Side {} · {}",
+                    side_name(tape.facing),
+                    tape.cassette
+                ));
             }
             _ => {
                 widgets.title.set_title("OnTape");
@@ -353,16 +411,31 @@ impl Component for App {
 
         let state = self.status.state;
         let loaded = state != DeckState::Empty;
-        widgets.play.set_class_active("latched", state == DeckState::Playing);
+        widgets
+            .play
+            .set_class_active("latched", state == DeckState::Playing);
         widgets.ff.set_class_active(
             "latched",
-            matches!(state, DeckState::Winding(Direction::Forward) | DeckState::Cueing(Direction::Forward)),
+            matches!(
+                state,
+                DeckState::Winding(Direction::Forward) | DeckState::Cueing(Direction::Forward)
+            ),
         );
         widgets.rew.set_class_active(
             "latched",
-            matches!(state, DeckState::Winding(Direction::Backward) | DeckState::Cueing(Direction::Backward)),
+            matches!(
+                state,
+                DeckState::Winding(Direction::Backward) | DeckState::Cueing(Direction::Backward)
+            ),
         );
-        for button in [&widgets.rew, &widgets.play, &widgets.stop, &widgets.ff, &widgets.flip, &widgets.eject] {
+        for button in [
+            &widgets.rew,
+            &widgets.play,
+            &widgets.stop,
+            &widgets.ff,
+            &widgets.flip,
+            &widgets.eject,
+        ] {
             button.set_sensitive(loaded);
         }
     }
@@ -417,7 +490,12 @@ impl App {
     }
 
     fn delete(&mut self, id: TapeId, title: &str) {
-        let in_deck = self.session.borrow().deck().tape().is_some_and(|(current, _)| current == id);
+        let in_deck = self
+            .session
+            .borrow()
+            .deck()
+            .tape()
+            .is_some_and(|(current, _)| current == id);
         if in_deck {
             self.toast("Eject the tape before throwing it away");
             return;
@@ -437,8 +515,13 @@ impl App {
 
         let tape_id = self.status.tape.as_ref().map(|t| t.id);
         if self.tape_title.as_ref().map(|(id, _)| *id) != tape_id {
-            self.tape_title = tape_id.map(|id| (id, session.store().tape_title(id).unwrap_or_default()));
-            *self.label.borrow_mut() = self.tape_title.as_ref().map(|(_, t)| t.clone()).unwrap_or_default();
+            self.tape_title =
+                tape_id.map(|id| (id, session.store().tape_title(id).unwrap_or_default()));
+            *self.label.borrow_mut() = self
+                .tape_title
+                .as_ref()
+                .map(|(_, t)| t.clone())
+                .unwrap_or_default();
         }
 
         self.track_line = match self.status.tape.as_ref().map(|t| (t, t.source)) {
@@ -447,13 +530,17 @@ impl App {
             Some((_, Some(Source::Silence))) => "Blank tape".to_owned(),
             Some((tape, Some(Source::Track { track, offset }))) => {
                 if self.track_title.as_ref().map(|(id, _)| *id) != Some(track) {
-                    self.track_title = Some((track, session.store().track_title(track).ok().flatten()));
+                    self.track_title =
+                        Some((track, session.store().track_title(track).ok().flatten()));
                 }
-                let song = session
-                    .deck()
-                    .tape()
-                    .map_or(0, |(_, t)| transport::song_number(t, tape.facing, tape.position));
-                match self.track_title.as_ref().and_then(|(_, name)| name.as_deref()) {
+                let song = session.deck().tape().map_or(0, |(_, t)| {
+                    transport::song_number(t, tape.facing, tape.position)
+                });
+                match self
+                    .track_title
+                    .as_ref()
+                    .and_then(|(_, name)| name.as_deref())
+                {
                     Some(name) => format!("Song {song} · {name} · {}", transport::fmt_time(offset)),
                     None => format!("Song {song} · {}", transport::fmt_time(offset)),
                 }
@@ -463,7 +550,9 @@ impl App {
 
         if let Some(mpris) = &*self.mpris.borrow() {
             let title = match self.status.tape.as_ref().and_then(|t| t.source) {
-                Some(Source::Track { .. }) => self.track_title.as_ref().and_then(|(_, name)| name.clone()),
+                Some(Source::Track { .. }) => {
+                    self.track_title.as_ref().and_then(|(_, name)| name.clone())
+                }
                 _ => None,
             };
             mpris.show(NowPlaying {
@@ -473,7 +562,10 @@ impl App {
             });
         }
 
-        let moving = matches!(self.status.state, DeckState::Playing | DeckState::Winding(_) | DeckState::Cueing(_));
+        let moving = matches!(
+            self.status.state,
+            DeckState::Playing | DeckState::Winding(_) | DeckState::Cueing(_)
+        );
         if self.was_moving && !moving {
             // The tape stopped somewhere new: show that on the shelf.
             self.refresh_shelf();
@@ -490,7 +582,11 @@ impl App {
             if let Some(tick) = self.reel_tick.take() {
                 tick.remove();
             }
-            let view = self.status.tape.as_ref().map(|t| CassetteView::new(self.label.borrow().clone(), t));
+            let view = self
+                .status
+                .tape
+                .as_ref()
+                .map(|t| CassetteView::new(self.label.borrow().clone(), t));
             self.cassette.set_view(view);
         } else if self.reel_tick.is_none() {
             let (session, label) = (self.session.clone(), self.label.clone());
@@ -511,7 +607,10 @@ impl App {
     fn refresh_shelf(&mut self) {
         let (tapes, inserted) = {
             let session = self.session.borrow();
-            (session.store().list_tapes(), session.deck().tape().map(|(id, _)| id))
+            (
+                session.store().list_tapes(),
+                session.deck().tape().map(|(id, _)| id),
+            )
         };
         let tapes = match tapes {
             Ok(tapes) => tapes,
@@ -521,7 +620,11 @@ impl App {
             }
         };
         let mut guard = self.shelf.guard();
-        let same_tapes = guard.len() == tapes.len() && guard.iter().zip(&tapes).all(|(row, tape)| row.id() == tape.id);
+        let same_tapes = guard.len() == tapes.len()
+            && guard
+                .iter()
+                .zip(&tapes)
+                .all(|(row, tape)| row.id() == tape.id);
         if same_tapes {
             for (i, tape) in tapes.into_iter().enumerate() {
                 let in_deck = inserted == Some(tape.id);
@@ -539,7 +642,10 @@ impl App {
     fn toast(&self, text: &str) {
         // Core errors start lowercase ("no tape in the deck"); toasts read as sentences.
         let mut chars = text.chars();
-        let text: String = chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default();
+        let text: String = chars
+            .next()
+            .map(|c| c.to_uppercase().chain(chars).collect())
+            .unwrap_or_default();
         let toast = adw::Toast::new(&text);
         toast.set_use_markup(false);
         toast.set_timeout(3);
@@ -549,7 +655,12 @@ impl App {
 
 /// The tape in the deck as the cassette drawing sees it, right now.
 fn cassette_view(session: &DeckSession, title: &str) -> Option<CassetteView> {
-    session.deck().status().tape.as_ref().map(|tape| CassetteView::new(title.to_owned(), tape))
+    session
+        .deck()
+        .status()
+        .tape
+        .as_ref()
+        .map(|tape| CassetteView::new(title.to_owned(), tape))
 }
 
 fn recorded_message(title: &str, tapes: &[RecordedTape]) -> String {
@@ -572,7 +683,12 @@ fn connect(button: &gtk::Button, sender: &ComponentSender<App>, msg: fn() -> App
 
 /// ◀◀ or ▶▶. With the pointer it reacts to press and release, so it can be
 /// held for cue/review; from the keyboard it just winds.
-fn wind_button(icon: &str, tooltip: &str, dir: Direction, sender: &ComponentSender<App>) -> gtk::Button {
+fn wind_button(
+    icon: &str,
+    tooltip: &str,
+    dir: Direction,
+    sender: &ComponentSender<App>,
+) -> gtk::Button {
     let button = icon_button(icon, tooltip);
     let gesture = gtk::GestureClick::new();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -615,24 +731,41 @@ fn add_menu(sender: &ComponentSender<App>) -> gtk::MenuButton {
         });
         button
     };
-    items.append(&item("Record Album Folder…", Box::new(|| AppMsg::ImportFolder)));
+    items.append(&item(
+        "Record Album Folder…",
+        Box::new(|| AppMsg::ImportFolder),
+    ));
     items.append(&item("Record Audio File…", Box::new(|| AppMsg::ImportFile)));
     items.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     for cassette in Cassette::ALL {
-        items.append(&item(&format!("New Blank {cassette}"), Box::new(move || AppMsg::NewBlank(cassette))));
+        items.append(&item(
+            &format!("New Blank {cassette}"),
+            Box::new(move || AppMsg::NewBlank(cassette)),
+        ));
     }
     popover.set_child(Some(&items));
-    gtk::MenuButton::builder().icon_name("list-add-symbolic").tooltip_text("Add tapes").popover(&popover).build()
+    gtk::MenuButton::builder()
+        .icon_name("list-add-symbolic")
+        .tooltip_text("Add tapes")
+        .popover(&popover)
+        .build()
 }
 
 /// Space, ←, →, F, E and R work anywhere in the window (but not in dialogs).
-fn shortcuts(root: &adw::ApplicationWindow, sender: &ComponentSender<App>) -> gtk::EventControllerKey {
+fn shortcuts(
+    root: &adw::ApplicationWindow,
+    sender: &ComponentSender<App>,
+) -> gtk::EventControllerKey {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let (root, sender) = (root.clone(), sender.clone());
     keys.connect_key_pressed(move |_, key, _, modifiers| {
         let busy = root.visible_dialog().is_some()
-            || modifiers.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK | gdk::ModifierType::SUPER_MASK);
+            || modifiers.intersects(
+                gdk::ModifierType::CONTROL_MASK
+                    | gdk::ModifierType::ALT_MASK
+                    | gdk::ModifierType::SUPER_MASK,
+            );
         let msg = match key {
             _ if busy => return glib::Propagation::Proceed,
             gdk::Key::space => AppMsg::PlayPause,
@@ -672,10 +805,17 @@ fn choose_import(root: &adw::ApplicationWindow, sender: &ComponentSender<App>, f
     }
 }
 
-fn ask_delete(root: &adw::ApplicationWindow, sender: &ComponentSender<App>, id: TapeId, title: String) {
+fn ask_delete(
+    root: &adw::ApplicationWindow,
+    sender: &ComponentSender<App>,
+    id: TapeId,
+    title: String,
+) {
     let dialog = adw::AlertDialog::new(
         Some("Throw the Tape Away?"),
-        Some(&format!("“{title}” and where you got to on it will be gone. The audio files stay.")),
+        Some(&format!(
+            "“{title}” and where you got to on it will be gone. The audio files stay."
+        )),
     );
     dialog.add_response("cancel", "_Keep");
     dialog.add_response("delete", "_Throw Away");

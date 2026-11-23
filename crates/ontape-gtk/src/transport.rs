@@ -39,7 +39,10 @@ pub fn play_pause(state: DeckState) -> Toggle {
 
 pub fn describe(event: DeckEvent) -> String {
     match event {
-        DeckEvent::EndOfSide(side) => format!("End of side {}. Flip the tape to carry on.", side_name(side)),
+        DeckEvent::EndOfSide(side) => format!(
+            "End of side {}. Flip the tape to carry on.",
+            side_name(side)
+        ),
         DeckEvent::WindFinished(Direction::Forward) => "Fast-forwarded to the end".to_owned(),
         DeckEvent::WindFinished(Direction::Backward) => "Rewound to the start".to_owned(),
     }
@@ -75,29 +78,52 @@ mod tests {
     #[test]
     fn wind_buttons_cue_only_while_playing() {
         assert_eq!(wind_press(DeckState::Playing), WindAction::Cue);
-        assert_eq!(wind_press(DeckState::Cueing(Direction::Forward)), WindAction::Cue);
+        assert_eq!(
+            wind_press(DeckState::Cueing(Direction::Forward)),
+            WindAction::Cue
+        );
         assert_eq!(wind_press(DeckState::Stopped), WindAction::Wind);
-        assert_eq!(wind_press(DeckState::Winding(Direction::Backward)), WindAction::Wind);
+        assert_eq!(
+            wind_press(DeckState::Winding(Direction::Backward)),
+            WindAction::Wind
+        );
         assert_eq!(wind_press(DeckState::Empty), WindAction::Wind);
     }
 
     #[test]
     fn play_pause_stops_a_moving_tape_and_plays_otherwise() {
         assert_eq!(play_pause(DeckState::Playing), Toggle::Stop);
-        assert_eq!(play_pause(DeckState::Cueing(Direction::Backward)), Toggle::Stop);
+        assert_eq!(
+            play_pause(DeckState::Cueing(Direction::Backward)),
+            Toggle::Stop
+        );
         assert_eq!(play_pause(DeckState::Stopped), Toggle::Play);
         // Play during a wind plays from wherever the tape got to.
-        assert_eq!(play_pause(DeckState::Winding(Direction::Forward)), Toggle::Play);
+        assert_eq!(
+            play_pause(DeckState::Winding(Direction::Forward)),
+            Toggle::Play
+        );
     }
 
     #[test]
     fn counts_songs_on_a_side() {
         let tracks = [
-            TrackInfo { id: TrackId(1), len: Duration::from_secs(60) },
-            TrackInfo { id: TrackId(2), len: Duration::from_secs(60) },
-            TrackInfo { id: TrackId(3), len: Duration::from_secs(600) },
+            TrackInfo {
+                id: TrackId(1),
+                len: Duration::from_secs(60),
+            },
+            TrackInfo {
+                id: TrackId(2),
+                len: Duration::from_secs(60),
+            },
+            TrackInfo {
+                id: TrackId(3),
+                len: Duration::from_secs(600),
+            },
         ];
-        let tape = layout_album(&tracks, &LayoutOptions::default()).unwrap().remove(0);
+        let tape = layout_album(&tracks, &LayoutOptions::default())
+            .unwrap()
+            .remove(0);
         // Leader, then song 1, then song 2 (the long song goes on side B).
         assert_eq!(song_number(&tape, Side::A, Duration::ZERO), 0);
         assert_eq!(song_number(&tape, Side::A, Duration::from_secs(30)), 1);
@@ -107,7 +133,9 @@ mod tests {
     #[test]
     fn formats_times() {
         assert_eq!(fmt_time(Duration::from_millis(754_900)), "12:34");
-        assert_eq!(describe(DeckEvent::EndOfSide(Side::B)), "End of side B. Flip the tape to carry on.");
+        assert_eq!(
+            describe(DeckEvent::EndOfSide(Side::B)),
+            "End of side B. Flip the tape to carry on."
+        );
     }
 }
-

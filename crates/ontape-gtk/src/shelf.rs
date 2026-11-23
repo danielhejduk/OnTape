@@ -36,7 +36,12 @@ impl ShelfRow {
     }
 
     fn subtitle(&self) -> String {
-        format!("{} · side {} · {}", self.tape.cassette, side_name(self.tape.facing), fmt_time(self.tape.position))
+        format!(
+            "{} · side {} · {}",
+            self.tape.cassette,
+            side_name(self.tape.facing),
+            fmt_time(self.tape.position)
+        )
     }
 }
 
@@ -50,7 +55,11 @@ impl FactoryComponent for ShelfRow {
     type Widgets = ShelfRowWidgets;
     type Index = DynamicIndex;
 
-    fn init_model((tape, in_deck): Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
+    fn init_model(
+        (tape, in_deck): Self::Init,
+        _index: &DynamicIndex,
+        _sender: FactorySender<Self>,
+    ) -> Self {
         ShelfRow { tape, in_deck }
     }
 
@@ -116,4 +125,3 @@ impl ShelfRow {
         widgets.in_deck.set_visible(self.in_deck);
     }
 }
-

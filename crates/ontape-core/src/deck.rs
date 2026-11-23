@@ -87,7 +87,13 @@ pub struct Deck {
 
 impl Deck {
     pub fn new(clock: Arc<dyn Clock>) -> Deck {
-        Deck { clock, loaded: None, counter: Counter::new(), held_counter: 0.0, events: Vec::new() }
+        Deck {
+            clock,
+            loaded: None,
+            counter: Counter::new(),
+            held_counter: 0.0,
+            events: Vec::new(),
+        }
     }
 
     pub fn restore(
@@ -110,13 +116,18 @@ impl Deck {
     }
 
     // Buttons
-    
+
     pub fn insert(&mut self, id: TapeId, tape: Tape) -> Result<(), DeckError> {
         if self.loaded.is_some() {
             return Err(DeckError::Occupied);
         }
-        self.counter.set_value(&tape.reels(), tape.position(), self.held_counter);
-        self.loaded = Some(Loaded { id, tape, transport: Transport::Stopped });
+        self.counter
+            .set_value(&tape.reels(), tape.position(), self.held_counter);
+        self.loaded = Some(Loaded {
+            id,
+            tape,
+            transport: Transport::Stopped,
+        });
         Ok(())
     }
 
@@ -131,7 +142,10 @@ impl Deck {
         let now = self.settle()?;
         let loaded = self.loaded.as_mut().expect("settle checked");
         if !matches!(loaded.transport, Transport::Playing { .. }) {
-            loaded.transport = Transport::Playing { from: loaded.tape.position(), started: now };
+            loaded.transport = Transport::Playing {
+                from: loaded.tape.position(),
+                started: now,
+            };
         }
         Ok(())
     }
@@ -149,7 +163,12 @@ impl Deck {
         let loaded = self.loaded.as_mut().expect("settle checked");
         loaded.transport = match loaded.transport {
             Transport::Winding(w) if w.dir() == dir => Transport::Stopped,
-            _ => Transport::Winding(Wind::start(loaded.tape.reels(), loaded.tape.position(), dir, now)),
+            _ => Transport::Winding(Wind::start(
+                loaded.tape.reels(),
+                loaded.tape.position(),
+                dir,
+                now,
+            )),
         };
         Ok(())
     }
@@ -160,7 +179,8 @@ impl Deck {
         match loaded.transport {
             Transport::Playing { .. } | Transport::Cueing(_) => {
                 let reels = loaded.tape.reels().cueing();
-                loaded.transport = Transport::Cueing(Wind::start(reels, loaded.tape.position(), dir, now));
+                loaded.transport =
+                    Transport::Cueing(Wind::start(reels, loaded.tape.position(), dir, now));
                 Ok(())
             }
             Transport::Stopped | Transport::Winding(_) => Err(DeckError::NotPlaying),
@@ -171,7 +191,10 @@ impl Deck {
         let now = self.settle()?;
         let loaded = self.loaded.as_mut().expect("settle checked");
         if let Transport::Cueing(_) = loaded.transport {
-            loaded.transport = Transport::Playing { from: loaded.tape.position(), started: now };
+            loaded.transport = Transport::Playing {
+                from: loaded.tape.position(),
+                started: now,
+            };
         }
         Ok(())
     }
@@ -182,7 +205,8 @@ impl Deck {
         let loaded = self.loaded.as_mut().expect("stop checked");
         loaded.tape.flip();
 
-        self.counter.set_value(&loaded.tape.reels(), loaded.tape.position(), value);
+        self.counter
+            .set_value(&loaded.tape.reels(), loaded.tape.position(), value);
         Ok(())
     }
 
@@ -213,7 +237,10 @@ impl Deck {
 
                     self.events.push(DeckEvent::EndOfSide(loaded.tape.facing()));
                 } else {
-                    loaded.transport = Transport::Playing { from: pos, started: now };
+                    loaded.transport = Transport::Playing {
+                        from: pos,
+                        started: now,
+                    };
                 }
             }
             Transport::Winding(wind) | Transport::Cueing(wind) => {
@@ -248,7 +275,10 @@ impl Deck {
     }
 
     pub fn is_moving(&self) -> bool {
-        matches!(self.state(), DeckState::Playing | DeckState::Winding(_) | DeckState::Cueing(_))
+        matches!(
+            self.state(),
+            DeckState::Playing | DeckState::Winding(_) | DeckState::Cueing(_)
+        )
     }
 
     pub fn tape(&self) -> Option<(TapeId, &Tape)> {
@@ -264,8 +294,15 @@ impl Deck {
         let now = self.clock.now();
         match self.loaded.as_ref().map(|l| l.transport) {
             Some(Transport::Playing { from, started }) => {
-                let side_len = self.loaded.as_ref().map_or(Duration::ZERO, |l| l.tape.side_len());
-                if from + now.saturating_duration_since(started) >= side_len { 0.0 } else { 1.0 }
+                let side_len = self
+                    .loaded
+                    .as_ref()
+                    .map_or(Duration::ZERO, |l| l.tape.side_len());
+                if from + now.saturating_duration_since(started) >= side_len {
+                    0.0
+                } else {
+                    1.0
+                }
             }
             Some(Transport::Winding(w) | Transport::Cueing(w)) => w.speed(now),
             Some(Transport::Stopped) | None => 0.0,
@@ -279,7 +316,9 @@ impl Deck {
     pub fn counter_value(&self) -> f64 {
         match &self.loaded {
             None => self.held_counter,
-            Some(l) => self.counter.value(&l.tape.reels(), live_position(l, self.clock.now())),
+            Some(l) => self
+                .counter
+                .value(&l.tape.reels(), live_position(l, self.clock.now())),
         }
     }
 
@@ -302,7 +341,11 @@ impl Deck {
                 reel_radii: l.tape.reels().reel_radii(position),
             }
         });
-        DeckStatus { state: self.state(), counter: self.counter_reading(), tape }
+        DeckStatus {
+            state: self.state(),
+            counter: self.counter_reading(),
+            tape,
+        }
     }
 }
 
@@ -359,7 +402,10 @@ mod tests {
     #[test]
     fn insert_twice_is_occupied() {
         let (_, mut deck) = loaded(Cassette::C60);
-        assert_eq!(deck.insert(TapeId(2), Tape::blank(Cassette::C60)), Err(DeckError::Occupied));
+        assert_eq!(
+            deck.insert(TapeId(2), Tape::blank(Cassette::C60)),
+            Err(DeckError::Occupied)
+        );
     }
 
     #[test]
@@ -405,7 +451,10 @@ mod tests {
         clock.advance(Duration::from_secs(59));
         assert!(deck.update().is_empty());
         clock.advance(Duration::from_secs(2));
-        assert_eq!(deck.update(), vec![DeckEvent::WindFinished(Direction::Forward)]);
+        assert_eq!(
+            deck.update(),
+            vec![DeckEvent::WindFinished(Direction::Forward)]
+        );
         assert_eq!(deck.position(), Some(mins(30)));
     }
 
@@ -416,7 +465,10 @@ mod tests {
         clock.advance(mins(10));
         deck.wind(Direction::Backward).unwrap();
         clock.advance(mins(2));
-        assert_eq!(deck.update(), vec![DeckEvent::WindFinished(Direction::Backward)]);
+        assert_eq!(
+            deck.update(),
+            vec![DeckEvent::WindFinished(Direction::Backward)]
+        );
         assert_eq!(deck.position(), Some(Duration::ZERO));
     }
 
@@ -501,8 +553,13 @@ mod tests {
 
     #[test]
     fn status_shows_song_offset_after_leader() {
-        let tracks = [TrackInfo { id: TrackId(1), len: mins(3) }];
-        let tape = layout_album(&tracks, &LayoutOptions::default()).unwrap().remove(0);
+        let tracks = [TrackInfo {
+            id: TrackId(1),
+            len: mins(3),
+        }];
+        let tape = layout_album(&tracks, &LayoutOptions::default())
+            .unwrap()
+            .remove(0);
         let (clock, mut deck) = deck();
         deck.insert(TapeId(1), tape).unwrap();
         deck.play().unwrap();
@@ -513,7 +570,10 @@ mod tests {
         assert_eq!(t.speed, 1.0);
         assert_eq!(
             t.source,
-            Some(Source::Track { track: TrackId(1), offset: Duration::from_secs(10) })
+            Some(Source::Track {
+                track: TrackId(1),
+                offset: Duration::from_secs(10)
+            })
         );
     }
 }

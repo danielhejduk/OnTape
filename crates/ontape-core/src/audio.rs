@@ -33,7 +33,9 @@ impl fmt::Display for AudioError {
             AudioError::Open(p, e) => write!(f, "{}: {e}", p.display()),
             AudioError::Decode(p, e) => write!(f, "{}: {e}", p.display()),
             AudioError::NoAudio(p) => write!(f, "{}: no playable audio track", p.display()),
-            AudioError::UnknownLength(p) => write!(f, "{}: cannot tell how long it is", p.display()),
+            AudioError::UnknownLength(p) => {
+                write!(f, "{}: cannot tell how long it is", p.display())
+            }
         }
     }
 }
@@ -80,11 +82,24 @@ impl FileSource {
             hint.with_extension(ext);
         }
         let format = symphonia::default::get_probe()
-            .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+            .probe(
+                &hint,
+                mss,
+                FormatOptions::default(),
+                MetadataOptions::default(),
+            )
             .map_err(err)?;
-        let track = format.default_track(TrackType::Audio).ok_or_else(|| AudioError::NoAudio(path.to_owned()))?;
-        let params = track.codec_params.as_ref().and_then(|p| p.audio()).ok_or_else(|| AudioError::NoAudio(path.to_owned()))?;
-        let decoder = codecs().make_audio_decoder(params, &AudioDecoderOptions::default()).map_err(err)?;
+        let track = format
+            .default_track(TrackType::Audio)
+            .ok_or_else(|| AudioError::NoAudio(path.to_owned()))?;
+        let params = track
+            .codec_params
+            .as_ref()
+            .and_then(|p| p.audio())
+            .ok_or_else(|| AudioError::NoAudio(path.to_owned()))?;
+        let decoder = codecs()
+            .make_audio_decoder(params, &AudioDecoderOptions::default())
+            .map_err(err)?;
 
         let len = match (track.time_base, track.duration) {
             (Some(tb), Some(dur)) => tb.calc_duration(dur).map(to_std),
@@ -117,7 +132,8 @@ impl FileSource {
     }
 
     pub fn len(&self) -> Result<Duration, AudioError> {
-        self.len.ok_or_else(|| AudioError::UnknownLength(self.path.clone()))
+        self.len
+            .ok_or_else(|| AudioError::UnknownLength(self.path.clone()))
     }
 
     /// Decodes the next packet into `buf`. Returns `false` at the end of the stream.
@@ -143,9 +159,10 @@ impl FileSource {
                 Err(_) => return false,
             };
             let spec = decoded.spec();
-            if let (Some(rate), Some(channels)) =
-                (NonZero::new(spec.rate()), NonZero::new(spec.channels().count() as u16))
-            {
+            if let (Some(rate), Some(channels)) = (
+                NonZero::new(spec.rate()),
+                NonZero::new(spec.channels().count() as u16),
+            ) {
                 self.rate = rate;
                 self.channels = channels;
             }
@@ -196,19 +213,34 @@ impl Source for FileSource {
     }
 
     fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
-        let time = Time::try_from_secs_f64(pos.as_secs_f64())
-            .ok_or_else(|| SeekError::Other(Arc::new(std::io::Error::other("seek position out of range"))))?;
+        let time = Time::try_from_secs_f64(pos.as_secs_f64()).ok_or_else(|| {
+            SeekError::Other(Arc::new(std::io::Error::other(
+                "seek position out of range",
+            )))
+        })?;
         let seeked = self
             .format
-            .seek(SeekMode::Accurate, SeekTo::Time { time, track_id: Some(self.track_id) })
+            .seek(
+                SeekMode::Accurate,
+                SeekTo::Time {
+                    time,
+                    track_id: Some(self.track_id),
+                },
+            )
             .map_err(|e| SeekError::Other(Arc::new(e)))?;
         self.decoder.reset();
         self.buf.clear();
         self.pos = 0;
         // The reader lands on a packet at or before the target; drop the samples in between.
-        self.skip = match (self.time_of(seeked.required_ts), self.time_of(seeked.actual_ts)) {
+        self.skip = match (
+            self.time_of(seeked.required_ts),
+            self.time_of(seeked.actual_ts),
+        ) {
             (Some(want), Some(got)) if want > got => {
-                (want - got).as_secs_f64().mul_add(self.rate.get() as f64, 0.5) as usize * self.channels.get() as usize
+                (want - got)
+                    .as_secs_f64()
+                    .mul_add(self.rate.get() as f64, 0.5) as usize
+                    * self.channels.get() as usize
             }
             _ => 0,
         };

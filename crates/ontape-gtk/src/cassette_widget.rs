@@ -71,20 +71,37 @@ mod imp {
     impl WidgetImpl for CassetteWidget {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let widget = self.obj();
-            let (width, height, scale) = (widget.width(), widget.height(), widget.scale_factor().max(1));
+            let (width, height, scale) = (
+                widget.width(),
+                widget.height(),
+                widget.scale_factor().max(1),
+            );
             if width <= 0 || height <= 0 {
                 return;
             }
             let view = self.view.borrow();
             let label = view.as_ref().map(|view| &view.label);
             let ink = widget.color();
-            let ink = (f64::from(ink.red()), f64::from(ink.green()), f64::from(ink.blue()));
+            let ink = (
+                f64::from(ink.red()),
+                f64::from(ink.green()),
+                f64::from(ink.blue()),
+            );
 
             let mut drawn = self.drawn.borrow_mut();
-            let current = |d: &Drawn| (d.width, d.height, d.scale, d.label.as_ref(), d.ink) == (width, height, scale, label, ink);
+            let current = |d: &Drawn| {
+                (d.width, d.height, d.scale, d.label.as_ref(), d.ink)
+                    == (width, height, scale, label, ink)
+            };
             if !drawn.as_ref().is_some_and(current) {
-                *drawn = Textures::draw(width, height, scale, label, ink)
-                    .map(|textures| Drawn { textures, width, height, scale, label: label.cloned(), ink });
+                *drawn = Textures::draw(width, height, scale, label, ink).map(|textures| Drawn {
+                    textures,
+                    width,
+                    height,
+                    scale,
+                    label: label.cloned(),
+                    ink,
+                });
             }
             // Without textures (cairo failed) the picture is missing until the next redraw.
             if let Some(drawn) = &*drawn {

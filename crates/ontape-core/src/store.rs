@@ -55,7 +55,9 @@ impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             StoreError::Io(path, e) => write!(f, "{}: {e}", path.display()),
-            StoreError::NoDataDir => f.write_str("cannot locate data directory: set XDG_DATA_HOME or HOME"),
+            StoreError::NoDataDir => {
+                f.write_str("cannot locate data directory: set XDG_DATA_HOME or HOME")
+            }
             StoreError::Sqlite(e) => write!(f, "database error: {e}"),
             StoreError::NotFound(id) => write!(f, "no tape#{}", id.0),
             StoreError::Corrupt(why) => write!(f, "corrupt data: {why}"),
@@ -99,10 +101,16 @@ pub struct TapeSummary {
 /// Default database location per the XDG Base Directory spec: `$XDG_DATA_HOME/ontape/ontape.db`,
 /// or `$HOME/.local/share/ontape/ontape.db` when `XDG_DATA_HOME` is unset, empty, or relative.
 pub fn default_db_path() -> Result<PathBuf> {
-    let absolute = |var: &str| std::env::var_os(var).map(PathBuf::from).filter(|p| p.is_absolute());
+    let absolute = |var: &str| {
+        std::env::var_os(var)
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+    };
     let data_home = match absolute("XDG_DATA_HOME") {
         Some(dir) => dir,
-        None => absolute("HOME").ok_or(StoreError::NoDataDir)?.join(".local/share"),
+        None => absolute("HOME")
+            .ok_or(StoreError::NoDataDir)?
+            .join(".local/share"),
     };
     Ok(data_home.join("ontape").join("ontape.db"))
 }
@@ -183,15 +191,21 @@ impl Store {
             "UPDATE tapes SET head_ns = ?2, facing = ?3 WHERE id = ?1",
             params![id.0, to_ns(tape.head()), side_to_sql(tape.facing())],
         )?;
-        if changed == 0 { Err(StoreError::NotFound(id)) } else { Ok(()) }
+        if changed == 0 {
+            Err(StoreError::NotFound(id))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn load_tape(&self, id: TapeId) -> Result<Tape> {
-        let (kind, cassette, head, facing): (String, i64, i64, String) = self.conn.query_row(
-            "SELECT kind, cassette, head_ns, facing FROM tapes WHERE id = ?1",
-            params![id.0],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )
+        let (kind, cassette, head, facing): (String, i64, i64, String) = self
+            .conn
+            .query_row(
+                "SELECT kind, cassette, head_ns, facing FROM tapes WHERE id = ?1",
+                params![id.0],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
             .optional()?
             .ok_or(StoreError::NotFound(id))?;
         let cassette = cassette_from_sql(cassette)?;
@@ -201,32 +215,59 @@ impl Store {
             "SELECT side, len_ns, track_id, offset_ns FROM segments WHERE tape_id = ?1 ORDER BY side, idx",
         )?;
         let rows = stmt.query_map(params![id.0], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, Option<i64>>(2)?, row.get::<_, i64>(3)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
         })?;
         for row in rows {
             let (side, len, track, offset) = row?;
-            let side = usize::try_from(side).ok().filter(|&s| s < 2).ok_or_else(|| corrupt("bad side"))?;
+            let side = usize::try_from(side)
+                .ok()
+                .filter(|&s| s < 2)
+                .ok_or_else(|| corrupt("bad side"))?;
             let source = match track {
                 None => Source::Silence,
-                Some(track) => Source::Track { track: track_from_sql(track)?, offset: from_ns(offset)? },
+                Some(track) => Source::Track {
+                    track: track_from_sql(track)?,
+                    offset: from_ns(offset)?,
+                },
             };
             pieces[side].push((from_ns(len)?, source));
         }
 
         let len = cassette.side_len();
         let [a, b] = pieces;
-        let sides = [Recording::try_from_pieces(len, a)?, Recording::try_from_pieces(len, b)?];
-        Ok(Tape::from_parts(kind_from_sql(&kind)?, cassette, sides, from_ns(head)?, side_from_sql(&facing)?)?)
+        let sides = [
+            Recording::try_from_pieces(len, a)?,
+            Recording::try_from_pieces(len, b)?,
+        ];
+        Ok(Tape::from_parts(
+            kind_from_sql(&kind)?,
+            cassette,
+            sides,
+            from_ns(head)?,
+            side_from_sql(&facing)?,
+        )?)
     }
 
     pub fn tape_title(&self, id: TapeId) -> Result<String> {
-        self.conn.query_row("SELECT title FROM tapes WHERE id = ?1", params![id.0], |row| row.get(0))
-        .optional()?
-        .ok_or(StoreError::NotFound(id))
+        self.conn
+            .query_row(
+                "SELECT title FROM tapes WHERE id = ?1",
+                params![id.0],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(StoreError::NotFound(id))
     }
 
     pub fn list_tapes(&self) -> Result<Vec<TapeSummary>> {
-        let mut stmt = self.conn.prepare("SELECT id, title, kind, cassette, head_ns, facing FROM tapes ORDER by id")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, kind, cassette, head_ns, facing FROM tapes ORDER by id")?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -261,7 +302,9 @@ impl Store {
     pub fn delete_tape(&self, id: TapeId) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         let changed = tx.execute("DELETE FROM tapes WHERE id = ?1", params![id.0])?;
-        if changed == 0 { return Err(StoreError::NotFound(id)); }
+        if changed == 0 {
+            return Err(StoreError::NotFound(id));
+        }
         delete_unused_tracks(&tx)?;
         tx.commit()?;
         Ok(())
@@ -282,7 +325,9 @@ impl Store {
     }
     /// Records where the audio for `id` lives, replacing any earlier entry.
     pub fn add_track(&self, id: TrackId, title: &str, path: &Path) -> Result<()> {
-        let path = path.to_str().ok_or_else(|| corrupt("track path is not valid UTF-8"))?;
+        let path = path
+            .to_str()
+            .ok_or_else(|| corrupt("track path is not valid UTF-8"))?;
         self.conn.execute(
             "INSERT INTO tracks (id, title, path) VALUES (?1, ?2, ?3)",
             params![track_to_sql(id)?, title, path],
@@ -294,7 +339,11 @@ impl Store {
     pub fn track_path(&self, id: TrackId) -> Result<Option<PathBuf>> {
         let path: Option<String> = self
             .conn
-            .query_row("SELECT path FROM tracks WHERE id = ?1", params![track_to_sql(id)?], |row| row.get(0))
+            .query_row(
+                "SELECT path FROM tracks WHERE id = ?1",
+                params![track_to_sql(id)?],
+                |row| row.get(0),
+            )
             .optional()?;
         Ok(path.map(PathBuf::from))
     }
@@ -302,7 +351,11 @@ impl Store {
     pub fn track_title(&self, id: TrackId) -> Result<Option<String>> {
         Ok(self
             .conn
-            .query_row("SELECT title FROM tracks WHERE id = ?1", params![track_to_sql(id)?], |row| row.get(0))
+            .query_row(
+                "SELECT title FROM tracks WHERE id = ?1",
+                params![track_to_sql(id)?],
+                |row| row.get(0),
+            )
             .optional()?)
     }
 
@@ -361,7 +414,14 @@ fn insert_segments(conn: &Connection, id: TapeId, tape: &Tape) -> Result<()> {
                 Source::Silence => (None, 0),
                 Source::Track { track, offset } => (Some(track_to_sql(track)?), to_ns(offset)),
             };
-            stmt.execute(params![id.0, side.index() as i64, idx as i64, to_ns(seg.len), track, offset])?;
+            stmt.execute(params![
+                id.0,
+                side.index() as i64,
+                idx as i64,
+                to_ns(seg.len),
+                track,
+                offset
+            ])?;
         }
     }
     Ok(())
@@ -376,7 +436,9 @@ fn to_ns(d: Duration) -> i64 {
 }
 
 fn from_ns(ns: i64) -> Result<Duration> {
-    u64::try_from(ns).map(Duration::from_nanos).map_err(|_| corrupt("negative time"))
+    u64::try_from(ns)
+        .map(Duration::from_nanos)
+        .map_err(|_| corrupt("negative time"))
 }
 
 fn track_to_sql(track: TrackId) -> Result<i64> {
@@ -384,7 +446,9 @@ fn track_to_sql(track: TrackId) -> Result<i64> {
 }
 
 fn track_from_sql(track: i64) -> Result<TrackId> {
-    u64::try_from(track).map(TrackId).map_err(|_| corrupt("negative track id"))
+    u64::try_from(track)
+        .map(TrackId)
+        .map_err(|_| corrupt("negative track id"))
 }
 
 fn kind_to_sql(kind: TapeKind) -> &'static str {
@@ -431,8 +495,15 @@ mod tests {
     use crate::tape::{LayoutOptions, TrackInfo, layout_album};
 
     fn album() -> Tape {
-        let tracks: Vec<_> = (0..4).map(|i| TrackInfo { id: TrackId(i), len: Duration::from_secs(200 + i) }).collect();
-        layout_album(&tracks, &LayoutOptions::default()).unwrap().remove(0)
+        let tracks: Vec<_> = (0..4)
+            .map(|i| TrackInfo {
+                id: TrackId(i),
+                len: Duration::from_secs(200 + i),
+            })
+            .collect();
+        layout_album(&tracks, &LayoutOptions::default())
+            .unwrap()
+            .remove(0)
     }
 
     #[test]
@@ -451,7 +522,14 @@ mod tests {
         let mut store = Store::open_in_memory().unwrap();
         let mut tape = Tape::blank(Cassette::C46);
         let id = store.add_tape("Mix", &tape).unwrap();
-        tape.record(Duration::from_secs(30), Source::Track { track: TrackId(9), offset: Duration::ZERO }).unwrap();
+        tape.record(
+            Duration::from_secs(30),
+            Source::Track {
+                track: TrackId(9),
+                offset: Duration::ZERO,
+            },
+        )
+        .unwrap();
         store.update_tape(id, &tape).unwrap();
         assert_eq!(store.load_tape(id).unwrap(), tape);
     }
@@ -515,7 +593,13 @@ mod tests {
     fn corrupt_segments_are_reported() {
         let mut store = Store::open_in_memory().unwrap();
         let id = store.add_tape("Test", &album()).unwrap();
-        store.conn.execute("DELETE FROM segments WHERE tape_id = ?1 AND idx = 0", params![id.0]).unwrap();
+        store
+            .conn
+            .execute(
+                "DELETE FROM segments WHERE tape_id = ?1 AND idx = 0",
+                params![id.0],
+            )
+            .unwrap();
         assert!(matches!(store.load_tape(id), Err(StoreError::Corrupt(_))));
     }
 
@@ -524,25 +608,42 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let id = TrackId(7);
         assert_eq!(store.track_path(id).unwrap(), None);
-        store.add_track(id, "Song", Path::new("/music/song.ogg")).unwrap();
-        assert_eq!(store.track_path(id).unwrap(), Some(PathBuf::from("/music/song.ogg")));
+        store
+            .add_track(id, "Song", Path::new("/music/song.ogg"))
+            .unwrap();
+        assert_eq!(
+            store.track_path(id).unwrap(),
+            Some(PathBuf::from("/music/song.ogg"))
+        );
         assert_eq!(store.track_title(id).unwrap().as_deref(), Some("Song"));
     }
     #[test]
     fn new_track_ids_start_at_one_and_are_distinct() {
         let store = Store::open_in_memory().unwrap();
-        assert_eq!(store.new_track_ids(3).unwrap(), [TrackId(1), TrackId(2), TrackId(3)]);
+        assert_eq!(
+            store.new_track_ids(3).unwrap(),
+            [TrackId(1), TrackId(2), TrackId(3)]
+        );
     }
 
     #[test]
     fn new_track_ids_skip_ids_in_use() {
         let mut store = Store::open_in_memory().unwrap();
-        store.add_track(TrackId(7), "Song", Path::new("/music/song.ogg")).unwrap();
+        store
+            .add_track(TrackId(7), "Song", Path::new("/music/song.ogg"))
+            .unwrap();
         assert_eq!(store.new_track_ids(1).unwrap(), [TrackId(8)]);
 
         // A made-up track has no row in `tracks`, only in a tape's segments.
         let mut tape = Tape::blank(Cassette::C46);
-        tape.record(Duration::from_secs(30), Source::Track { track: TrackId(20), offset: Duration::ZERO }).unwrap();
+        tape.record(
+            Duration::from_secs(30),
+            Source::Track {
+                track: TrackId(20),
+                offset: Duration::ZERO,
+            },
+        )
+        .unwrap();
         store.add_tape("Mix", &tape).unwrap();
         assert_eq!(store.new_track_ids(2).unwrap(), [TrackId(21), TrackId(22)]);
     }
@@ -550,9 +651,18 @@ mod tests {
     #[test]
     fn adding_a_track_twice_fails() {
         let store = Store::open_in_memory().unwrap();
-        store.add_track(TrackId(1), "One", Path::new("/music/1.ogg")).unwrap();
-        assert!(store.add_track(TrackId(1), "Other", Path::new("/music/other.ogg")).is_err());
-        assert_eq!(store.track_path(TrackId(1)).unwrap(), Some(PathBuf::from("/music/1.ogg")));
+        store
+            .add_track(TrackId(1), "One", Path::new("/music/1.ogg"))
+            .unwrap();
+        assert!(
+            store
+                .add_track(TrackId(1), "Other", Path::new("/music/other.ogg"))
+                .is_err()
+        );
+        assert_eq!(
+            store.track_path(TrackId(1)).unwrap(),
+            Some(PathBuf::from("/music/1.ogg"))
+        );
     }
 
     #[test]

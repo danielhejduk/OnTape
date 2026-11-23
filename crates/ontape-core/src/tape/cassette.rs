@@ -2,7 +2,12 @@ use std::fmt;
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Cassette { C46, C60, C90, C120 }
+pub enum Cassette {
+    C46,
+    C60,
+    C90,
+    C120,
+}
 impl Cassette {
     pub const ALL: [Cassette; 4] = [Cassette::C46, Cassette::C60, Cassette::C90, Cassette::C120];
     pub const fn total_minutes(self) -> u64 {
@@ -13,7 +18,7 @@ impl Cassette {
             Cassette::C120 => 120,
         }
     }
-    
+
     pub const fn side_len(self) -> Duration {
         Duration::from_secs(self.total_minutes() * 60 / 2)
     }

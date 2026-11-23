@@ -116,12 +116,20 @@ impl Tape {
     ) -> Result<Tape, TapeError> {
         let side_len = cassette.side_len();
         if sides.iter().any(|r| r.len() != side_len) {
-            return Err(TapeError::Invalid("side length does not match the cassette"));
+            return Err(TapeError::Invalid(
+                "side length does not match the cassette",
+            ));
         }
         if head > side_len {
             return Err(TapeError::Invalid("head is past the end of the tape"));
         }
-        Ok(Tape { kind, cassette, sides, head, facing })
+        Ok(Tape {
+            kind,
+            cassette,
+            sides,
+            head,
+            facing,
+        })
     }
 
     pub fn kind(&self) -> TapeKind {

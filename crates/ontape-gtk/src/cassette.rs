@@ -98,7 +98,11 @@ pub struct ReelsView {
 impl CassetteView {
     pub fn new(title: String, status: &TapeStatus) -> CassetteView {
         CassetteView {
-            label: Label { title, side: status.facing, cassette: status.cassette.to_string() },
+            label: Label {
+                title,
+                side: status.facing,
+                cassette: status.cassette.to_string(),
+            },
             reels: ReelsView {
                 radii: (status.reel_radii.0 * 1000.0, status.reel_radii.1 * 1000.0),
                 angles: reel_angles(status),
@@ -155,14 +159,26 @@ impl Placement {
 /// Fits the cassette into a `width` × `height` widget, if there is room.
 fn placement(width: f64, height: f64) -> Option<Placement> {
     let scale = ((width - 2.0 * MARGIN) / WIDTH).min((height - 2.0 * MARGIN) / HEIGHT);
-    (scale > 0.0).then(|| Placement { scale, x: (width - WIDTH * scale) / 2.0, y: (height - HEIGHT * scale) / 2.0 })
+    (scale > 0.0).then(|| Placement {
+        scale,
+        x: (width - WIDTH * scale) / 2.0,
+        y: (height - HEIGHT * scale) / 2.0,
+    })
 }
 
 /// Draws everything that stays put — the shell with its label, or an empty
 /// deck when `label` is `None` — to fill a `width` × `height` widget. `ink`
 /// is the theme's text colour.
-fn draw_shell(cr: &Context, width: f64, height: f64, label: Option<&Label>, ink: (f64, f64, f64)) -> Result<(), cairo::Error> {
-    let Some(at) = placement(width, height) else { return Ok(()) };
+fn draw_shell(
+    cr: &Context,
+    width: f64,
+    height: f64,
+    label: Option<&Label>,
+    ink: (f64, f64, f64),
+) -> Result<(), cairo::Error> {
+    let Some(at) = placement(width, height) else {
+        return Ok(());
+    };
     at.apply(cr);
     match label {
         Some(label) => draw_cassette(cr, label),
@@ -205,14 +221,26 @@ impl Textures {
     /// `device_scale` device pixels per pixel, showing a tape with `label`
     /// or an empty deck. `ink` is the theme's text colour. `None` only if
     /// cairo fails.
-    pub fn draw(width: i32, height: i32, device_scale: i32, label: Option<&Label>, ink: (f64, f64, f64)) -> Option<Textures> {
+    pub fn draw(
+        width: i32,
+        height: i32,
+        device_scale: i32,
+        label: Option<&Label>,
+        ink: (f64, f64, f64),
+    ) -> Option<Textures> {
         let (w, h) = (f64::from(width), f64::from(height));
-        let shell = texture((0, 0, width, height), device_scale, |cr| draw_shell(cr, w, h, label, ink))?;
+        let shell = texture((0, 0, width, height), device_scale, |cr| {
+            draw_shell(cr, w, h, label, ink)
+        })?;
         let tape = match (label, placement(w, h)) {
             (Some(label), Some(at)) => Some(TapeTextures::draw(&at, device_scale, label)?),
             _ => None,
         };
-        Some(Textures { shell, tape, device_scale })
+        Some(Textures {
+            shell,
+            tape,
+            device_scale,
+        })
     }
 }
 
@@ -267,7 +295,8 @@ fn texture(
     draw: impl FnOnce(&Context) -> Result<(), cairo::Error>,
 ) -> Option<gdk::Texture> {
     let (device_width, device_height) = (width * device_scale, height * device_scale);
-    let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, device_width, device_height).ok()?;
+    let mut surface =
+        cairo::ImageSurface::create(cairo::Format::ARgb32, device_width, device_height).ok()?;
     surface.set_device_scale(f64::from(device_scale), f64::from(device_scale));
     {
         let cr = Context::new(&surface).ok()?;
@@ -295,9 +324,19 @@ fn rect((x, y, width, height): (i32, i32, i32, i32)) -> graphene::Rect {
 ///
 /// Each frame is a handful of textures and plain rings, with nothing to
 /// rasterise, clip to a shape or draw off screen first.
-pub fn scene(width: i32, height: i32, textures: &Textures, reels: Option<&ReelsView>) -> gsk::RenderNode {
-    let mut layers = vec![gsk::TextureNode::new(&textures.shell, &rect((0, 0, width, height))).upcast()];
-    if let (Some(tape), Some(reels), Some(at)) = (&textures.tape, reels, placement(f64::from(width), f64::from(height))) {
+pub fn scene(
+    width: i32,
+    height: i32,
+    textures: &Textures,
+    reels: Option<&ReelsView>,
+) -> gsk::RenderNode {
+    let mut layers =
+        vec![gsk::TextureNode::new(&textures.shell, &rect((0, 0, width, height))).upcast()];
+    if let (Some(tape), Some(reels), Some(at)) = (
+        &textures.tape,
+        reels,
+        placement(f64::from(width), f64::from(height)),
+    ) {
         // The packs, in the cassette's millimetres. They reach past the
         // window's outline; the cover hides that.
         let mut packs = Vec::new();
@@ -312,7 +351,9 @@ pub fn scene(width: i32, height: i32, textures: &Textures, reels: Option<&ReelsV
             }
         }
         if !packs.is_empty() {
-            let to_pixels = gsk::Transform::new().translate(&graphene::Point::new(at.x as f32, at.y as f32)).scale(at.scale as f32, at.scale as f32);
+            let to_pixels = gsk::Transform::new()
+                .translate(&graphene::Point::new(at.x as f32, at.y as f32))
+                .scale(at.scale as f32, at.scale as f32);
             let packs = gsk::TransformNode::new(gsk::ContainerNode::new(&packs), Some(&to_pixels));
             layers.push(gsk::ClipNode::new(packs, &tape.window).upcast());
         }
@@ -323,14 +364,18 @@ pub fn scene(width: i32, height: i32, textures: &Textures, reels: Option<&ReelsV
             // towards where the notch is.
             let (sin, cos) = angle.sin_cos();
             let place = |(texture, bounds): &Sprite, out: f64, turn: bool| {
-                let centre = graphene::Point::new((at.x + (x + out * sin) * at.scale) as f32, (at.y + (y - out * cos) * at.scale) as f32);
+                let centre = graphene::Point::new(
+                    (at.x + (x + out * sin) * at.scale) as f32,
+                    (at.y + (y - out * cos) * at.scale) as f32,
+                );
                 let mut onto_hub = gsk::Transform::new().translate(&centre);
                 if turn {
                     // The angle counts every turn since the start of the
                     // tape; only what is left of the last one shows.
                     onto_hub = onto_hub.rotate(angle.rem_euclid(TAU).to_degrees() as f32);
                 }
-                gsk::TransformNode::new(gsk::TextureNode::new(texture, bounds), Some(&onto_hub)).upcast()
+                gsk::TransformNode::new(gsk::TextureNode::new(texture, bounds), Some(&onto_hub))
+                    .upcast()
             };
             layers.push(place(&tape.hub, 0.0, false));
             if blurred {
@@ -366,7 +411,16 @@ fn pack((x, y): (f64, f64), radius: f64, pixel: f64) -> gsk::RenderNode {
     ];
     let (x, y, end) = (x as f32, y as f32, end as f32);
     let bounds = graphene::Rect::new(x - end, y - end, 2.0 * end, 2.0 * end);
-    gsk::RadialGradientNode::new(&bounds, &graphene::Point::new(x, y), end, end, 0.0, 1.0, &stops).upcast()
+    gsk::RadialGradientNode::new(
+        &bounds,
+        &graphene::Point::new(x, y),
+        end,
+        end,
+        0.0,
+        1.0,
+        &stops,
+    )
+    .upcast()
 }
 
 fn draw_cassette(cr: &Context, label: &Label) -> Result<(), cairo::Error> {
@@ -382,7 +436,13 @@ fn draw_cassette(cr: &Context, label: &Label) -> Result<(), cairo::Error> {
     cr.stroke()?;
 
     // Screws.
-    for (x, y) in [(4.2, 4.2), (WIDTH - 4.2, 4.2), (4.2, HEIGHT - 4.2), (WIDTH - 4.2, HEIGHT - 4.2), (WIDTH / 2.0, 58.0)] {
+    for (x, y) in [
+        (4.2, 4.2),
+        (WIDTH - 4.2, 4.2),
+        (4.2, HEIGHT - 4.2),
+        (WIDTH - 4.2, HEIGHT - 4.2),
+        (WIDTH / 2.0, 58.0),
+    ] {
         cr.arc(x, y, 1.3, 0.0, TAU);
         cr.set_source_rgb(0.55, 0.55, 0.57);
         cr.fill()?;
@@ -514,7 +574,12 @@ fn draw_empty_well(cr: &Context, (r, g, b): (f64, f64, f64)) -> Result<(), cairo
     cr.set_source_rgba(r, g, b, 0.55);
     cr.select_font_face("Sans", FontSlant::Normal, FontWeight::Normal);
     cr.set_font_size(4.6);
-    centered_text(cr, "Pick a tape from the shelf", WIDTH / 2.0, HEIGHT / 2.0 + 1.5)?;
+    centered_text(
+        cr,
+        "Pick a tape from the shelf",
+        WIDTH / 2.0,
+        HEIGHT / 2.0 + 1.5,
+    )?;
     Ok(())
 }
 
@@ -575,7 +640,10 @@ mod tests {
         let start = reel_angles(&status(Duration::ZERO));
         assert_eq!(start.1, 0.0);
         let later = reel_angles(&status(Duration::from_secs(60)));
-        assert!(later.0 > start.0 && later.1 > start.1, "{start:?} → {later:?}");
+        assert!(
+            later.0 > start.0 && later.1 > start.1,
+            "{start:?} → {later:?}"
+        );
     }
 
     #[test]
@@ -591,8 +659,13 @@ mod tests {
     fn packs_fit_between_the_hubs() {
         // The two packs never overlap: their radii stay below the hub spacing.
         for secs in [0, 600, 900, 1800] {
-            let radii = CassetteView::new(String::new(), &status(Duration::from_secs(secs))).reels.radii;
-            assert!(radii.0 + radii.1 < RIGHT_HUB.0 - LEFT_HUB.0, "{secs}: {radii:?}");
+            let radii = CassetteView::new(String::new(), &status(Duration::from_secs(secs)))
+                .reels
+                .radii;
+            assert!(
+                radii.0 + radii.1 < RIGHT_HUB.0 - LEFT_HUB.0,
+                "{secs}: {radii:?}"
+            );
             assert!(radii.0 >= HUB - 0.01 && radii.1 >= HUB - 0.01);
         }
     }
@@ -600,7 +673,10 @@ mod tests {
     /// How many frames a second get redrawn on a monitor ticking at `hz`.
     fn redrawn_per_second(hz: i64) -> usize {
         let mut last = None;
-        (0..hz).map(|frame| frame * 1_000_000 / hz).filter(|&now| frame_due(last, now).then(|| last = Some(now)).is_some()).count()
+        (0..hz)
+            .map(|frame| frame * 1_000_000 / hz)
+            .filter(|&now| frame_due(last, now).then(|| last = Some(now)).is_some())
+            .count()
     }
 
     #[test]
@@ -619,15 +695,23 @@ mod tests {
 
     /// The red, green and blue of the finished picture at points given in
     /// the cassette's millimetres, in a `width` × `height` widget.
-    fn colours(width: i32, height: i32, device_scale: i32, view: &CassetteView, points: &[(f64, f64)]) -> Vec<[u8; 3]> {
+    fn colours(
+        width: i32,
+        height: i32,
+        device_scale: i32,
+        view: &CassetteView,
+        points: &[(f64, f64)],
+    ) -> Vec<[u8; 3]> {
         let textures = Textures::draw(width, height, device_scale, Some(&view.label), INK).unwrap();
-        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, width, height).unwrap();
+        let mut surface =
+            cairo::ImageSurface::create(cairo::Format::ARgb32, width, height).unwrap();
         scene(width, height, &textures, Some(&view.reels)).draw(&Context::new(&surface).unwrap());
         let at = placement(f64::from(width), f64::from(height)).unwrap();
         let stride = surface.stride() as usize;
         let data = surface.data().unwrap();
         let colour = |&(x, y): &(f64, f64)| {
-            let pixel = (at.y + y * at.scale) as usize * stride + (at.x + x * at.scale) as usize * 4;
+            let pixel =
+                (at.y + y * at.scale) as usize * stride + (at.x + x * at.scale) as usize * 4;
             [data[pixel + 2], data[pixel + 1], data[pixel]]
         };
         points.iter().map(colour).collect()
@@ -651,9 +735,15 @@ mod tests {
 
     #[test]
     fn drawing_does_not_fail() {
-        let view = CassetteView::new("A rather long album title that will not fit".into(), &status(Duration::from_secs(300)));
-        for (width, height, device_scale) in [(400, 260, 1), (400, 260, 2), (1512, 835, 1), (333, 777, 1)] {
-            let textures = Textures::draw(width, height, device_scale, Some(&view.label), INK).unwrap();
+        let view = CassetteView::new(
+            "A rather long album title that will not fit".into(),
+            &status(Duration::from_secs(300)),
+        );
+        for (width, height, device_scale) in
+            [(400, 260, 1), (400, 260, 2), (1512, 835, 1), (333, 777, 1)]
+        {
+            let textures =
+                Textures::draw(width, height, device_scale, Some(&view.label), INK).unwrap();
             assert!(textures.tape.is_some());
             scene(width, height, &textures, Some(&view.reels));
         }
@@ -673,7 +763,18 @@ mod tests {
         let view = CassetteView::new(String::new(), &status(Duration::from_secs(900)));
         let between = ((LEFT_HUB.0 + RIGHT_HUB.0) / 2.0, LEFT_HUB.1);
         for device_scale in [1, 2] {
-            let seen = colours(520, 330, device_scale, &view, &[(LEFT_HUB.0 + 9.0, LEFT_HUB.1), (RIGHT_HUB.0 - 9.0, RIGHT_HUB.1), between, (50.2, 17.5)]);
+            let seen = colours(
+                520,
+                330,
+                device_scale,
+                &view,
+                &[
+                    (LEFT_HUB.0 + 9.0, LEFT_HUB.1),
+                    (RIGHT_HUB.0 - 9.0, RIGHT_HUB.1),
+                    between,
+                    (50.2, 17.5),
+                ],
+            );
             assert!(is_hub(&seen[0]) && is_hub(&seen[1]), "hubs {seen:?}");
             assert!(is_dark_glass(&seen[2]), "glass {seen:?}");
             assert!(is_label(&seen[3]), "label {seen:?}");
@@ -686,9 +787,23 @@ mod tests {
         // shows in the window to the right of the hub, but the label covers
         // it to the left of the opening and above the window.
         let view = CassetteView::new(String::new(), &status(Duration::ZERO));
-        assert!(view.reels.radii.0 > HUB_OPENING + 3.0, "{:?}", view.reels.radii);
+        assert!(
+            view.reels.radii.0 > HUB_OPENING + 3.0,
+            "{:?}",
+            view.reels.radii
+        );
         let reach = HUB_OPENING + 1.5;
-        let seen = colours(520, 330, 1, &view, &[(LEFT_HUB.0 + reach, LEFT_HUB.1), (LEFT_HUB.0 - reach, LEFT_HUB.1), (LEFT_HUB.0 + reach, WINDOW.1 - 1.0)]);
+        let seen = colours(
+            520,
+            330,
+            1,
+            &view,
+            &[
+                (LEFT_HUB.0 + reach, LEFT_HUB.1),
+                (LEFT_HUB.0 - reach, LEFT_HUB.1),
+                (LEFT_HUB.0 + reach, WINDOW.1 - 1.0),
+            ],
+        );
         assert!(is_pack(&seen[0]), "pack {seen:?}");
         assert!(is_label(&seen[1]) && is_label(&seen[2]), "label {seen:?}");
     }
@@ -698,12 +813,20 @@ mod tests {
         // The notch on the right hub's rim starts at the top and has moved
         // on a quarter of a turn of tape later.
         let notch = (RIGHT_HUB.0, RIGHT_HUB.1 - NOTCH_ORBIT);
-        let is_notch = |&[r, g, b]: &[u8; 3]| (100..135).contains(&r) && (100..135).contains(&g) && (100..140).contains(&b);
+        let is_notch = |&[r, g, b]: &[u8; 3]| {
+            (100..135).contains(&r) && (100..135).contains(&g) && (100..140).contains(&b)
+        };
         let mut view = CassetteView::new(String::new(), &status(Duration::ZERO));
         assert_eq!(view.reels.angles.1, 0.0);
         assert!(is_notch(&colours(520, 330, 1, &view, &[notch])[0]));
         view.reels.angles.1 = TAU / 4.0;
-        let seen = colours(520, 330, 1, &view, &[notch, (RIGHT_HUB.0 + NOTCH_ORBIT, RIGHT_HUB.1)]);
+        let seen = colours(
+            520,
+            330,
+            1,
+            &view,
+            &[notch, (RIGHT_HUB.0 + NOTCH_ORBIT, RIGHT_HUB.1)],
+        );
         assert!(is_hub(&seen[0]) && is_notch(&seen[1]), "{seen:?}");
     }
 
@@ -719,6 +842,10 @@ mod tests {
         assert!(is_dark_glass(&colours(520, 330, 1, &view, &[tooth])[0]));
         view.reels.speed = BLUR_SPEED * 2.0;
         let [r, g, b] = colours(520, 330, 1, &view, &[tooth])[0];
-        assert!((70..130).contains(&r) && (70..130).contains(&g) && (70..130).contains(&b), "{:?}", [r, g, b]);
+        assert!(
+            (70..130).contains(&r) && (70..130).contains(&g) && (70..130).contains(&b),
+            "{:?}",
+            [r, g, b]
+        );
     }
 }

@@ -38,7 +38,10 @@ impl Reels {
     }
 
     pub fn cueing(self) -> Reels {
-        Reels { full_wind: self.full_wind * CUE_SLOWDOWN, ..self }
+        Reels {
+            full_wind: self.full_wind * CUE_SLOWDOWN,
+            ..self
+        }
     }
 
     pub fn side_len(self) -> Duration {
@@ -60,7 +63,10 @@ impl Reels {
 
     pub fn reel_radii(&self, position: Duration) -> (f64, f64) {
         let position = position.min(self.side_len);
-        (self.reel_radius(self.side_len - position), self.reel_radius(position))
+        (
+            self.reel_radius(self.side_len - position),
+            self.reel_radius(position),
+        )
     }
 
     pub fn wind_time(&self, from: Duration, to: Duration) -> Duration {
@@ -81,7 +87,8 @@ impl Reels {
                 if elapsed >= self.wind_time(from, self.side_len) {
                     return self.side_len;
                 }
-                self.wound_for_radius(self.reel_radius(from) + grown).min(self.side_len)
+                self.wound_for_radius(self.reel_radius(from) + grown)
+                    .min(self.side_len)
             }
             Direction::Backward => {
                 if elapsed >= self.wind_time(from, Duration::ZERO) {
@@ -123,7 +130,12 @@ pub struct Wind {
 
 impl Wind {
     pub fn start(reels: Reels, from: Duration, dir: Direction, now: Instant) -> Wind {
-        Wind { reels, from: from.min(reels.side_len), dir, started: now }
+        Wind {
+            reels,
+            from: from.min(reels.side_len),
+            dir,
+            started: now,
+        }
     }
 
     pub fn reels(&self) -> &Reels {
@@ -143,7 +155,11 @@ impl Wind {
     }
 
     pub fn position(&self, now: Instant) -> Duration {
-        self.reels.wind_position(self.from, self.dir, now.saturating_duration_since(self.started))
+        self.reels.wind_position(
+            self.from,
+            self.dir,
+            now.saturating_duration_since(self.started),
+        )
     }
 
     pub fn finishes_at(&self) -> Instant {
@@ -168,6 +184,9 @@ impl Wind {
 }
 
 fn secs(s: f64) -> Duration {
-    if s.is_nan() || s <= 0.0 { Duration::ZERO }
-    else { Duration::from_secs_f64(s) }
+    if s.is_nan() || s <= 0.0 {
+        Duration::ZERO
+    } else {
+        Duration::from_secs_f64(s)
+    }
 }

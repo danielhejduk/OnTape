@@ -52,7 +52,7 @@ enum Command {
     Tapes,
     Album {
         title: String,
-        
+
         #[arg(required = true, value_name = "LENGTH", value_parser = parse_len)]
         lengths: Vec<Duration>,
     },
@@ -82,16 +82,16 @@ enum Command {
 
     #[command(visible_alias = "p")]
     Play,
-    
+
     #[command(visible_alias = "s")]
     Stop,
     Ff,
-    
+
     #[command(visible_alias = "rw")]
     Rew,
     Cue,
     Review,
-    
+
     #[command(visible_alias = "rel")]
     Release,
     Flip,
@@ -139,7 +139,10 @@ enum Flow {
 }
 
 fn run(opts: Options) -> Result<(), Box<dyn Error>> {
-    let clock: Arc<dyn Clock> = Arc::new(ScaledClock { origin: Instant::now(), speed: opts.speed });
+    let clock: Arc<dyn Clock> = Arc::new(ScaledClock {
+        origin: Instant::now(),
+        speed: opts.speed,
+    });
     let db = match opts.db {
         Some(path) => path,
         None => store::default_db_path().map_err(|e| format!("{e}, or pass --db"))?,
@@ -147,8 +150,15 @@ fn run(opts: Options) -> Result<(), Box<dyn Error>> {
     let store = Store::open_creating_dir(&db)?;
     let session = Arc::new(Mutex::new(DeckSession::open(store, 0, clock)?));
 
-    let speed_note = if opts.speed == 1.0 { String::new() } else { format!(", clock ×{}", opts.speed) };
-    println!("OnTape deck ({}{speed_note}). Type 'help' for commands.", db.display());
+    let speed_note = if opts.speed == 1.0 {
+        String::new()
+    } else {
+        format!(", clock ×{}", opts.speed)
+    };
+    println!(
+        "OnTape deck ({}{speed_note}). Type 'help' for commands.",
+        db.display()
+    );
     println!("{}", status_line(&lock(&session)));
 
     let running = Arc::new(AtomicBool::new(true));
@@ -161,7 +171,9 @@ fn run(opts: Options) -> Result<(), Box<dyn Error>> {
             let mut player = if mute {
                 None
             } else {
-                Player::open(speed).inspect_err(|e| eprintln!("* {e}; playing silently")).ok()
+                Player::open(speed)
+                    .inspect_err(|e| eprintln!("* {e}; playing silently"))
+                    .ok()
             };
             while running.load(Ordering::Relaxed) {
                 thread::sleep(Duration::from_millis(100));
@@ -313,7 +325,11 @@ fn add_album(s: &mut DeckSession, title: &str, lens: &[Duration]) -> Result<(), 
     Ok(())
 }
 
-fn import(session: &Mutex<DeckSession>, path: &Path, title: Option<String>) -> Result<(), Box<dyn Error>> {
+fn import(
+    session: &Mutex<DeckSession>,
+    path: &Path,
+    title: Option<String>,
+) -> Result<(), Box<dyn Error>> {
     let album = library::scan(path, title)?;
     print_recorded(&library::record(lock(session).store_mut(), &album)?);
     Ok(())
@@ -339,7 +355,11 @@ fn list_tapes(s: &DeckSession) -> Result<(), Box<dyn Error>> {
             TapeKind::Album => "album",
             TapeKind::Mixtape => "mixtape",
         };
-        let mark = if inserted == Some(t.id) { "  [in deck]" } else { "" };
+        let mark = if inserted == Some(t.id) {
+            "  [in deck]"
+        } else {
+            ""
+        };
         println!(
             "#{:<4} {:<5} {:<8} side {}  {:>5}  \"{}\"{mark}",
             t.id.0,
@@ -373,7 +393,10 @@ fn status_line(s: &DeckSession) -> String {
         None => "end of side".to_owned(),
         Some(Source::Silence) => "blank tape".to_owned(),
         Some(Source::Track { track, offset }) => {
-            let song = s.deck().tape().map_or(0, |(_, tape)| song_number(tape, t.facing, t.position));
+            let song = s
+                .deck()
+                .tape()
+                .map_or(0, |(_, tape)| song_number(tape, t.facing, t.position));
             match s.store().track_title(track).ok().flatten() {
                 Some(name) => format!("song {song} \"{name}\" at {}", fmt_time(offset)),
                 None => format!("song {song} at {}", fmt_time(offset)),
@@ -402,7 +425,10 @@ fn song_number(tape: &Tape, side: Side, position: Duration) -> usize {
 
 fn describe(event: DeckEvent) -> String {
     match event {
-        DeckEvent::EndOfSide(side) => format!("end of side {}, deck stopped (flip the tape?)", side_name(side)),
+        DeckEvent::EndOfSide(side) => format!(
+            "end of side {}, deck stopped (flip the tape?)",
+            side_name(side)
+        ),
         DeckEvent::WindFinished(Direction::Forward) => "fast-forward reached the end".to_owned(),
         DeckEvent::WindFinished(Direction::Backward) => "rewound to the start".to_owned(),
     }
@@ -447,7 +473,10 @@ fn parse_cassette(text: &str) -> Result<Cassette, String> {
 }
 
 fn parse_id(text: &str) -> Result<TapeId, String> {
-    text.trim_start_matches('#').parse().map(TapeId).map_err(|_| "expected a tape number, e.g. 3".to_owned())
+    text.trim_start_matches('#')
+        .parse()
+        .map(TapeId)
+        .map_err(|_| "expected a tape number, e.g. 3".to_owned())
 }
 
 fn parse_speed(text: &str) -> Result<f64, String> {
@@ -458,7 +487,9 @@ fn parse_speed(text: &str) -> Result<f64, String> {
 }
 
 fn parse_seconds(text: &str) -> Result<Duration, String> {
-    parse_speed(text).map(Duration::from_secs_f64).map_err(|_| "expected a number of seconds above 0".to_owned())
+    parse_speed(text)
+        .map(Duration::from_secs_f64)
+        .map_err(|_| "expected a number of seconds above 0".to_owned())
 }
 
 fn split_args(line: &str) -> Result<Vec<String>, String> {

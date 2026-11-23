@@ -36,7 +36,9 @@ pub struct Mpris {
 
 impl fmt::Debug for Mpris {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Mpris").field("shown", &self.shown).finish_non_exhaustive()
+        f.debug_struct("Mpris")
+            .field("shown", &self.shown)
+            .finish_non_exhaustive()
     }
 }
 
@@ -79,7 +81,10 @@ pub fn start(app: Sender<AppMsg>, slot: MprisSlot) {
         player.connect_previous(send(|| AppMsg::Wind(Direction::Backward)));
 
         glib::MainContext::default().spawn_local(player.run());
-        *slot.borrow_mut() = Some(Mpris { player, shown: RefCell::new(None) });
+        *slot.borrow_mut() = Some(Mpris {
+            player,
+            shown: RefCell::new(None),
+        });
         // Show the deck's current state right away.
         app.emit(AppMsg::Tick);
     });
@@ -124,10 +129,15 @@ mod tests {
     #[test]
     fn deck_states_map_to_media_status() {
         assert_eq!(playback_status(DeckState::Playing), PlaybackStatus::Playing);
-        assert_eq!(playback_status(DeckState::Cueing(Direction::Forward)), PlaybackStatus::Playing);
+        assert_eq!(
+            playback_status(DeckState::Cueing(Direction::Forward)),
+            PlaybackStatus::Playing
+        );
         assert_eq!(playback_status(DeckState::Stopped), PlaybackStatus::Paused);
-        assert_eq!(playback_status(DeckState::Winding(Direction::Backward)), PlaybackStatus::Paused);
+        assert_eq!(
+            playback_status(DeckState::Winding(Direction::Backward)),
+            PlaybackStatus::Paused
+        );
         assert_eq!(playback_status(DeckState::Empty), PlaybackStatus::Stopped);
     }
 }
-
