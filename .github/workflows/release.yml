@@ -19,24 +19,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Fully static CLI (musl, static libasound/libopus/sqlite).
-          - name: cli-x86_64-linux
+          # Dynamically linked against glibc and libasound; sqlite and opus
+          # are bundled. Needs glibc >= 2.39 and libasound2 on the host.
+          - name: cli-x86_64-linux-gnu
             os: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
+            target: x86_64-unknown-linux-gnu
             package: ontape-cli
-            static: true
-          - name: cli-aarch64-linux
+            deps: libasound2-dev cmake pkg-config
+          - name: cli-aarch64-linux-gnu
             os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
+            target: aarch64-unknown-linux-gnu
             package: ontape-cli
-            static: true
+            deps: libasound2-dev cmake pkg-config
           # GTK4 can't be linked statically; this build needs GTK >= 4.14 and
           # libadwaita >= 1.5 on the host system.
           - name: gtk-x86_64-linux-gnu
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             package: ontape-gtk
-            static: false
+            deps: libasound2-dev libgtk-4-dev libadwaita-1-dev cmake pkg-config
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -45,28 +46,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install musl toolchain and static ALSA
-        if: matrix.static
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends musl-tools cmake pkg-config
-          .github/scripts/build-static-alsa.sh "$RUNNER_TEMP/alsa-static"
-          target_env="$(echo '${{ matrix.target }}' | tr '[:lower:]-' '[:upper:]_')"
-          target_lc="$(echo '${{ matrix.target }}' | tr '-' '_')"
-          {
-            echo "PKG_CONFIG_ALLOW_CROSS=1"
-            echo "PKG_CONFIG_ALL_STATIC=1"
-            echo "PKG_CONFIG_PATH=$RUNNER_TEMP/alsa-static/lib/pkgconfig"
-            echo "PKG_CONFIG_LIBDIR=$RUNNER_TEMP/alsa-static/lib/pkgconfig"
-            echo "CC_${target_lc}=musl-gcc"
-            echo "CARGO_TARGET_${target_env}_LINKER=musl-gcc"
-          } >> "$GITHUB_ENV"
-      - name: Install GTK dependencies
-        if: matrix.package == 'ontape-gtk'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libasound2-dev libgtk-4-dev libadwaita-1-dev cmake pkg-config
+          sudo apt-get install -y --no-install-recommends ${{ matrix.deps }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -74,13 +57,6 @@ jobs:
 
       - name: Build
         run: cargo build --release --locked -p ${{ matrix.package }} --target ${{ matrix.target }}
-
-      - name: Verify the binary is static
-        if: matrix.static
-        run: |
-          bin="target/${{ matrix.target }}/release/${{ matrix.package }}"
-          file "$bin"
-          file "$bin" | grep -Eq 'static(-pie|ally) linked'
 
       - name: Package
         run: |
