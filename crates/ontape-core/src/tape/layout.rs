@@ -71,9 +71,11 @@ pub fn layout_album(tracks: &[TrackInfo], opts: &LayoutOptions) -> Result<Vec<Ta
     let bounds = sides.balanced_split(tape_count * 2, capacity);
 
     let tapes = bounds
-        .chunks_exact(2)
-        .map(|pair| {
-            let (a, b) = (pair[0].clone(), pair[1].clone());
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|[a, b]| {
+            let (a, b) = (a.clone(), b.clone());
             let longer = sides.len(a.start, a.end).max(sides.len(b.start, b.end));
             let cassette = Cassette::smallest_fitting(longer).expect("sides are within capacity");
             Tape::album(

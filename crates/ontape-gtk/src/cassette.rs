@@ -401,7 +401,14 @@ fn pack((x, y): (f64, f64), radius: f64, pixel: f64) -> gsk::RenderNode {
     let rim = gdk::RGBA::new(0.42, 0.28, 0.19, 1.0);
     let (inside, outside) = (radius - 0.15, radius + 0.15);
     let end = outside + pixel / 2.0;
-    let stop = |at: f64, colour| gsk::ColorStop::new((at / end) as f32, colour);
+    // When a pixel is wider than the rim the steps overlap. Older GTK (4.14)
+    // refuses stops that go backwards or leave 0..1, so each stop starts no
+    // earlier than the one before it.
+    let mut last = 0.0_f64;
+    let mut stop = |at: f64, colour| {
+        last = (at / end).clamp(last, 1.0);
+        gsk::ColorStop::new(last as f32, colour)
+    };
     let stops = [
         stop(0.0, wound),
         stop(inside - pixel / 2.0, wound),
@@ -619,6 +626,21 @@ mod tests {
     use super::*;
     use ontape_core::tape::{Cassette, TapeId};
     use std::time::Duration;
+
+    /// [`super::scene`], safe to call without initialising GTK.
+    ///
+    /// Older GTK (4.14) registers the render node types only in `gtk_init`
+    /// or the first time one of their `get_type` functions runs, and aborts
+    /// when a node is made before that. Asking for one type registers them all.
+    fn scene(
+        width: i32,
+        height: i32,
+        textures: &Textures,
+        reels: Option<&ReelsView>,
+    ) -> gsk::RenderNode {
+        gsk::TextureNode::static_type();
+        super::scene(width, height, textures, reels)
+    }
 
     fn status(position: Duration) -> TapeStatus {
         let cassette = Cassette::C60;
