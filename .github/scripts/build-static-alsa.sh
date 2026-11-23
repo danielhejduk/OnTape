@@ -11,8 +11,17 @@ src="$(mktemp -d)"
 curl -fsSL "https://www.alsa-project.org/files/pub/lib/alsa-lib-${version}.tar.bz2" \
   | tar -xj -C "$src" --strip-components=1
 
+# musl-gcc doesn't search the glibc include path, so expose just the Linux
+# kernel UAPI headers (linux/, asm/, asm-generic/) that alsa-lib needs.
+kinc="$src/kernel-headers"
+mkdir -p "$kinc"
+triplet="$(gcc -print-multiarch)"
+ln -s /usr/include/linux "$kinc/linux"
+ln -s /usr/include/asm-generic "$kinc/asm-generic"
+ln -s "/usr/include/$triplet/asm" "$kinc/asm"
+
 cd "$src"
-CC=musl-gcc ./configure \
+CC=musl-gcc CFLAGS="-O2 -I$kinc" ./configure \
   --prefix="$prefix" \
   --enable-static \
   --disable-shared \
