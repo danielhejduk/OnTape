@@ -7,12 +7,12 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use crate::audio::AudioError;
 use crate::player;
 use crate::store::{Store, StoreError};
-use crate::tape::{Cassette, LayoutError, LayoutOptions, Side, Source, TapeId, TrackId, TrackInfo, layout_album};
+use crate::tape::{Cassette, LayoutError, LayoutOptions, Side, Source, TapeId, TrackInfo, layout_album};
 
 /// File extensions treated as audio when importing a folder.
 pub const AUDIO_EXTENSIONS: &[&str] =
@@ -42,7 +42,17 @@ impl fmt::Display for LibraryError {
     }
 }
 
-impl std::error::Error for LibraryError {}
+impl std::error::Error for LibraryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            LibraryError::Io(_, e) => Some(e),
+            LibraryError::NoAudio(_) => None,
+            LibraryError::Audio(e) => Some(e),
+            LibraryError::Layout(e) => Some(e),
+            LibraryError::Store(e) => Some(e),
+        }
+    }
+}
 
 impl From<AudioError> for LibraryError {
     fn from(e: AudioError) -> Self {
@@ -118,7 +128,8 @@ pub fn scan(path: &Path, title: Option<String>) -> Result<ScannedAlbum> {
 /// Adds a scanned album's tracks to the library and records it onto tapes.
 pub fn record(store: &mut Store, album: &ScannedAlbum) -> Result<Vec<RecordedTape>> {
     let mut tracks = Vec::with_capacity(album.files.len());
-    for (id, file) in new_track_ids(album.files.len()).zip(&album.files) {
+    let ids = store.new_track_ids(album.files.len())?;
+    for (id, file) in ids.into_iter().zip(&album.files) {
         store.add_track(id, &file.title, &file.path)?;
         tracks.push(TrackInfo { id, len: file.len });
     }
@@ -127,7 +138,8 @@ pub fn record(store: &mut Store, album: &ScannedAlbum) -> Result<Vec<RecordedTap
 
 /// Records an album of made-up tracks with these lengths (no audio files).
 pub fn record_lengths(store: &mut Store, title: &str, lens: &[Duration]) -> Result<Vec<RecordedTape>> {
-    let tracks: Vec<TrackInfo> = new_track_ids(lens.len()).zip(lens).map(|(id, &len)| TrackInfo { id, len }).collect();
+    let ids = store.new_track_ids(lens.len())?;
+    let tracks: Vec<TrackInfo> = ids.into_iter().zip(lens).map(|(id, &len)| TrackInfo { id, len }).collect();
     record_tracks(store, title, &tracks)
 }
 
@@ -146,13 +158,6 @@ pub fn record_tracks(store: &mut Store, title: &str, tracks: &[TrackInfo]) -> Re
         recorded.push(RecordedTape { id, title: name, cassette: tape.cassette(), songs: [songs(Side::A), songs(Side::B)] });
     }
     Ok(recorded)
-}
-
-/// Fresh track ids that won't clash with earlier imports.
-pub fn new_track_ids(count: usize) -> impl Iterator<Item = TrackId> {
-    let millis = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-    let base = millis * 100;
-    (0..count as u64).map(move |i| TrackId(base + i))
 }
 
 pub fn is_audio(path: &Path) -> bool {
@@ -221,10 +226,28 @@ mod tests {
     }
 
     #[test]
-    fn track_ids_are_distinct() {
-        let ids: Vec<TrackId> = new_track_ids(5).collect();
-        assert_eq!(ids.len(), 5);
-        assert!(ids.windows(2).all(|w| w[0] < w[1]));
+    fn back_to_back_imports_keep_their_own_tracks() {
+        let mut store = Store::open_in_memory().unwrap();
+        let album = |dir: &str| ScannedAlbum {
+            title: dir.into(),
+            files: vec![ScannedFile { path: format!("/{dir}/1.flac").into(), title: "One".into(), len: min(4) }],
+        };
+        let first = record(&mut store, &album("first")).unwrap();
+        let made_up = record_lengths(&mut store, "Made up", &[min(4)]).unwrap();
+        let second = record(&mut store, &album("second")).unwrap();
+
+        let first_song = |id: TapeId| {
+            let tape = store.load_tape(id).unwrap();
+            let Source::Track { track, .. } = tape.recording(Side::A).segments()[1].source else {
+                panic!("the first song follows the leader");
+            };
+            track
+        };
+        let tracks = [first_song(first[0].id), first_song(made_up[0].id), first_song(second[0].id)];
+        assert!(tracks[0] != tracks[1] && tracks[1] != tracks[2] && tracks[0] != tracks[2]);
+        assert_eq!(store.track_path(tracks[0]).unwrap(), Some(PathBuf::from("/first/1.flac")));
+        assert_eq!(store.track_path(tracks[1]).unwrap(), None);
+        assert_eq!(store.track_path(tracks[2]).unwrap(), Some(PathBuf::from("/second/1.flac")));
     }
 
     #[test]

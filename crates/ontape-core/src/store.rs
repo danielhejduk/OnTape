@@ -263,6 +263,18 @@ impl Store {
     }
 
     // Tracks
+    pub fn new_track_ids(&self, count: usize) -> Result<Vec<TrackId>> {
+        let highest: Option<i64> = self.conn.query_row(
+            "SELECT MAX(id) FROM (SELECT MAX(id) AS id FROM tracks UNION ALL SELECT MAX(track_id) FROM segments)", 
+        [], |row| row.get(0),
+        )?;
+        let first = match highest {
+            Some(id) => track_from_sql(id)?.0 + 1,
+            None => 1,
+        };
+
+        Ok((first..).take(count).map(TrackId).collect())
+    }
     /// Records where the audio for `id` lives, replacing any earlier entry.
     pub fn add_track(&self, id: TrackId, title: &str, path: &Path) -> Result<()> {
         let path = path.to_str().ok_or_else(|| corrupt("track path is not valid UTF-8"))?;
@@ -502,6 +514,32 @@ mod tests {
         store.add_track(id, "Song", Path::new("/music/song.ogg")).unwrap();
         assert_eq!(store.track_path(id).unwrap(), Some(PathBuf::from("/music/song.ogg")));
         assert_eq!(store.track_title(id).unwrap().as_deref(), Some("Song"));
+    }
+    #[test]
+    fn new_track_ids_start_at_one_and_are_distinct() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(store.new_track_ids(3).unwrap(), [TrackId(1), TrackId(2), TrackId(3)]);
+    }
+
+    #[test]
+    fn new_track_ids_skip_ids_in_use() {
+        let mut store = Store::open_in_memory().unwrap();
+        store.add_track(TrackId(7), "Song", Path::new("/music/song.ogg")).unwrap();
+        assert_eq!(store.new_track_ids(1).unwrap(), [TrackId(8)]);
+
+        // A made-up track has no row in `tracks`, only in a tape's segments.
+        let mut tape = Tape::blank(Cassette::C46);
+        tape.record(Duration::from_secs(30), Source::Track { track: TrackId(20), offset: Duration::ZERO }).unwrap();
+        store.add_tape("Mix", &tape).unwrap();
+        assert_eq!(store.new_track_ids(2).unwrap(), [TrackId(21), TrackId(22)]);
+    }
+
+    #[test]
+    fn adding_a_track_twice_fails() {
+        let store = Store::open_in_memory().unwrap();
+        store.add_track(TrackId(1), "One", Path::new("/music/1.ogg")).unwrap();
+        assert!(store.add_track(TrackId(1), "Other", Path::new("/music/other.ogg")).is_err());
+        assert_eq!(store.track_path(TrackId(1)).unwrap(), Some(PathBuf::from("/music/1.ogg")));
     }
 
     #[test]

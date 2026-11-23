@@ -35,7 +35,16 @@ impl fmt::Display for PlaybackError {
     }
 }
 
-impl std::error::Error for PlaybackError {}
+impl std::error::Error for PlaybackError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            PlaybackError::Device(e) => Some(e),
+            PlaybackError::NoFile(_) => None,
+            PlaybackError::Audio(e) => Some(e),
+            PlaybackError::Store(e) => Some(e),
+        }
+    }
+}
 
 impl From<StoreError> for PlaybackError {
     fn from(e: StoreError) -> Self {
