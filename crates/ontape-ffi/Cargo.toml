@@ -1,0 +1,23 @@
+[package]
+name = "ontape-ffi"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "UniFFI bindings to ontape-core for the Android app"
+
+[lib]
+name = "ontape_ffi"
+crate-type = ["cdylib", "lib"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+ontape-core = { path = "../ontape-core", default-features = false }
+uniffi = "0.32.2"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]

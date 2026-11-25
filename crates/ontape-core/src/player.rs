@@ -14,7 +14,7 @@ use crate::store::StoreError;
 use crate::tape::{Source, TrackId};
 
 /// How far the audio may drift from the tape before it is re-seeked.
-const MAX_DRIFT: Duration = Duration::from_millis(400);
+pub const MAX_DRIFT: Duration = Duration::from_millis(400);
 
 #[derive(Debug)]
 pub enum PlaybackError {
