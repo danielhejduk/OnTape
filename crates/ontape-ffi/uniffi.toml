@@ -1,3 +1,6 @@
 [bindings.kotlin]
 package_name = "ontape.core"
 cdylib_name = "ontape_ffi"
+# Gate java.lang.ref.Cleaner (API 33) behind an SDK check; minSdk is 30.
+android = true
+android_cleaner = true

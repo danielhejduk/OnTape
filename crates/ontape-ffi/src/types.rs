@@ -163,6 +163,13 @@ impl From<store::TapeSummary> for TapeSummary {
     }
 }
 
+/// An audio file to record with [`crate::OnTape::import_tracks`].
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ImportTrack {
+    pub path: String,
+    pub title: Option<String>,
+}
+
 /// A tape that an import put on the shelf.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct RecordedTape {

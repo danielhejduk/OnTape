@@ -9,7 +9,7 @@ use ontape_core::store::Store;
 use ontape_core::tape::{Direction, TapeId, TrackId};
 
 use crate::error::OnTapeError;
-use crate::types::{AudibleTrack, DeckEvent, DeckStatus, RecordedTape, TapeSummary, ms};
+use crate::types::{AudibleTrack, DeckEvent, DeckStatus, ImportTrack, RecordedTape, TapeSummary, ms};
 
 type Result<T, E = OnTapeError> = std::result::Result<T, E>;
 
@@ -82,6 +82,24 @@ impl OnTape {
     pub fn import_album(&self, path: String, title: Option<String>) -> Result<Vec<RecordedTape>> {
         // Scanning reads every file, so the deck stays usable meanwhile.
         let album = library::scan(Path::new(&path), title)?;
+        let recorded = library::record(self.lock().store_mut(), &album)?;
+        Ok(recorded.into_iter().map(Into::into).collect())
+    }
+
+    /// Records these audio files, in this order, onto one or more album tapes
+    /// titled `title`. A track without a title is named after its file. Slow:
+    /// reads every file first, and records nothing if any of them is bad.
+    pub fn import_tracks(&self, title: String, tracks: Vec<ImportTrack>) -> Result<Vec<RecordedTape>> {
+        let mut files = Vec::with_capacity(tracks.len());
+        for track in tracks {
+            let path = PathBuf::from(track.path);
+            let len = player::probe_len(&path).map_err(library::LibraryError::from)?;
+            let title = track.title.unwrap_or_else(|| {
+                path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+            });
+            files.push(library::ScannedFile { path, title, len });
+        }
+        let album = library::ScannedAlbum { title, files };
         let recorded = library::record(self.lock().store_mut(), &album)?;
         Ok(recorded.into_iter().map(Into::into).collect())
     }
